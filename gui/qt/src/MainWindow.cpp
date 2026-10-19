@@ -52,6 +52,7 @@ MainWindow::MainWindow(GuiSettings settings)
     bodyLayout->addWidget(freshness_);
     pages_->addWidget(workersPage()); pages_->addWidget(tasksPage());
     pages_->addWidget(addPage()); pages_->addWidget(regressionPage());
+    connect(pages_,&QStackedWidget::currentChanged,this,[this](int index){if(index==3)scheduleDailyQuery();});
     bodyLayout->addWidget(pages_,1); shell->addWidget(body,1);
     setStyleSheet(GcrpUi::styleSheet());
     new GcrpUi::InteractionFeedback(this);
@@ -70,6 +71,7 @@ MainWindow::MainWindow(GuiSettings settings)
                 if(catalog_.is_null())catalogStatus_->setText(QStringLiteral("Server 版本不支持自动目录查询，请更新 Server；旧版可手动导入目录清单。"));
             }
             this->refresh();
+            if(pages_->currentIndex()==3)scheduleDailyQuery();
         });
         connect(&freshnessTimer_,&QTimer::timeout,this,[this]{
             const qint64 maxAge=qMax(settings_.refreshSeconds*3000,settings_.timeout*2);

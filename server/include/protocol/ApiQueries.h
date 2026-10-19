@@ -167,6 +167,7 @@ inline Json capabilities(const Json& q) {
         {"features", {{"remote_cancel", false}, {"cancel_queued", true},
             {"worker_inventory_persistent", false}, {"authentication", false}, {"worker_current_tasks_v1",true},
             {"operator_confirmed_offline_recovery_v1",true},
+            {"daily_comparison_summary_v1",true},
             {"worker_controls_persistent",true}, {"worker_maintenance_v1",true},
             {"remote_worker_management",true}, {"administration_disabled",false},
             {"archive_sha256_receipts",true}, {"task_group_sql_index",true},

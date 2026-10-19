@@ -1,5 +1,6 @@
 #include "ConsoleSupport.h"
 #include "CaseListImport.h"
+#include "DailyStyle.h"
 
 QWidget* MainWindow::workersPage() {
     auto widget=page(QStringLiteral("工作机状态"),QStringLiteral("按物理服务器管理子 slot；下线后不再派发新任务，正在执行的 testcase 正常完成。"));
@@ -149,33 +150,65 @@ QWidget* MainWindow::addPage() {
 }
 
 QWidget* MainWindow::regressionPage() {
-    auto widget=page(QStringLiteral("每日回归"),QStringLiteral("按日期比较每日定时批次；人工批次独立，缺少结果单独列出。"));
-    auto layout=qobject_cast<QVBoxLayout*>(widget->layout());auto bar=new QHBoxLayout;
-    dateA_=new QDateEdit(demo_?QDate(2026,10,11):QDate::currentDate().addDays(-1));dateB_=new QDateEdit(demo_?QDate(2026,10,12):QDate::currentDate());
-    dateA_->setCalendarPopup(true);dateB_->setCalendarPopup(true);dateA_->setDisplayFormat("yyyy-MM-dd");dateB_->setDisplayFormat("yyyy-MM-dd");dateA_->setMinimumWidth(140);dateB_->setMinimumWidth(140);
-    bar->addWidget(new QLabel(QStringLiteral("基准日期")));bar->addWidget(dateA_);bar->addWidget(new QLabel(QStringLiteral("比较日期")));bar->addWidget(dateB_);
-    auto compare=new QPushButton(QStringLiteral("比较 / 首页"));bar->addWidget(compare);
-    auto plan=new QPushButton(QStringLiteral("比较日 · 回归完整性"));plan->setObjectName("dailyPlan");
-    connect(plan,&QPushButton::clicked,this,[this]{showDailyPlan();});bar->addWidget(plan);bar->addStretch();layout->addLayout(bar);
-    auto filters=new QHBoxLayout;regressionStage_=new QComboBox;regressionStage_->addItem(QStringLiteral("全部阶段"),"");
-    regressionChange_=new QComboBox;
-    for(const auto& item:QList<QPair<QString,QString>>{{QStringLiteral("全部变化"),""},{QStringLiteral("新回退"),"REGRESSION"},
-        {QStringLiteral("新通过"),"IMPROVEMENT"},{QStringLiteral("缺少结果"),"MISSING"},
-        {QStringLiteral("异常 / 未完成"),"EXCEPTION"},{QStringLiteral("无确认回退"),"UNCHANGED"}})regressionChange_->addItem(item.first,item.second);
-    regressionSearch_=new QLineEdit;regressionSearch_->setPlaceholderText(QStringLiteral("testcase 路径搜索"));
-    filters->addWidget(regressionStage_);filters->addWidget(regressionChange_);filters->addWidget(regressionSearch_,1);layout->addLayout(filters);
-    regressionSummary_=new QLabel;regressionSummary_->setWordWrap(true);layout->addWidget(regressionSummary_);
-    regressionTable_=table(demo_?QStringList{"模板阶段","testcase","基准结果","比较结果","变化","证据"}:
-        QStringList{"模板阶段","testcase","基准结果","比较结果","变化","证据"});layout->addWidget(GcrpUi::card(regressionTable_),1);
-    auto actions=new QHBoxLayout;auto baseline=new QPushButton(QStringLiteral("基准任务 / 日志"));
-    auto current=new QPushButton(QStringLiteral("比较任务 / 日志"));regressionNext_=new QPushButton(QStringLiteral("下一页"));regressionNext_->setEnabled(false);
-    actions->addWidget(baseline);actions->addWidget(current);actions->addStretch();actions->addWidget(regressionNext_);layout->addLayout(actions);
-    auto open=[this](const char* side){const auto row=regressionTable_->currentRow();
-        if(demo_||row<0||row>=int(regressionRows_.size())||regressionRows_[row][side].is_null())return;
-        openTask(regressionRows_[row][side]["task_id"].get<uint64_t>());};
-    connect(baseline,&QPushButton::clicked,this,[open]{open("baseline");});connect(current,&QPushButton::clicked,this,[open]{open("comparison");});
+    auto widget=page(QStringLiteral("每日回归对比"),QStringLiteral("按日期与阶段查找新回退，只纳入 Clock 每日定时批次"));
+    widget->setObjectName("dailyRegression");widget->setStyleSheet(dailyStyle());
+    auto layout=qobject_cast<QVBoxLayout*>(widget->layout());
+    auto filters=new QGridLayout;filters->setHorizontalSpacing(14);filters->setVerticalSpacing(6);
+    dateA_=new QDateEdit(QDate::currentDate().addDays(-1));dateB_=new QDateEdit(QDate::currentDate());
+    dateA_->setObjectName("dailyBaseline");dateB_->setObjectName("dailyComparison");
+    for(auto date:{dateA_,dateB_}){date->setCalendarPopup(true);date->setDisplayFormat("yyyy-MM-dd");date->setMinimumWidth(140);}
+    regressionStage_=new QComboBox;regressionStage_->setObjectName("dailyStage");regressionStage_->addItem(QStringLiteral("全部阶段"),"");regressionStage_->setMinimumWidth(190);
+    filters->addWidget(new QLabel(QStringLiteral("基准日期")),0,0);filters->addWidget(new QLabel(QStringLiteral("对比日期")),0,1);
+    filters->addWidget(new QLabel(QStringLiteral("阶段 · 每日任务模板")),0,2);
+    filters->addWidget(dateA_,1,0);filters->addWidget(dateB_,1,1);filters->addWidget(regressionStage_,1,2);
+    filters->setColumnStretch(2,1);layout->addLayout(filters);
+    auto searchRow=new QHBoxLayout;regressionSearch_=new QLineEdit;regressionSearch_->setObjectName("dailySearch");
+    regressionSearch_->setMaxLength(512);regressionSearch_->setClearButtonEnabled(true);regressionSearch_->setPlaceholderText(QStringLiteral("搜索 testcase 名称或相对路径…"));
+    searchRow->addWidget(regressionSearch_,1);regressionSync_=new QLabel(QStringLiteral("等待查询"));regressionSync_->setObjectName("dailySync");searchRow->addWidget(regressionSync_);layout->addLayout(searchRow);
+    auto metrics=new QHBoxLayout;metrics->setSpacing(12);
+    const QList<QStringList> categories{
+        {"REGRESSION",QStringLiteral("新回退"),"PASS → FAIL","#b53344"},
+        {"IMPROVEMENT",QStringLiteral("新通过"),"FAIL → PASS","#187b59"},
+        {"STABLE_PASS",QStringLiteral("持续通过"),QStringLiteral("两天均为 PASS"),"#3169e9"},
+        {"STABLE_FAIL",QStringLiteral("持续失败"),QStringLiteral("两天均为 FAIL"),"#94620d"}};
+    for(const auto& item:categories){
+        auto button=new QPushButton;button->setObjectName("dailyMetric");button->setProperty("change",item[0]);button->setCheckable(true);button->setMinimumWidth(135);
+        auto box=new QVBoxLayout(button);box->setContentsMargins(16,12,16,12);box->setSpacing(4);
+        auto title=new QLabel(QStringLiteral("● ")+item[1]);title->setStyleSheet("color:"+item[3]+";font-size:12px;");
+        auto value=new QLabel(QStringLiteral("—"));value->setObjectName("dailyMetricValue");auto detail=new QLabel(item[2]);detail->setObjectName("muted");
+        for(auto label:{title,value,detail}){label->setAttribute(Qt::WA_TransparentForMouseEvents);box->addWidget(label);}
+        metrics->addWidget(button,1);regressionCards_[item[0]]=button;
+        connect(button,&QPushButton::clicked,this,[this,key=item[0]]{selectDailyChange(key);});
+    }layout->addLayout(metrics);
+    auto panel=new QFrame;panel->setObjectName("dailyPanel");auto body=new QVBoxLayout(panel);body->setContentsMargins(16,16,16,12);body->setSpacing(13);
+    regressionTitle_=new QLabel(QStringLiteral("每日回归对比"));regressionTitle_->setObjectName("dailyHeading");body->addWidget(regressionTitle_);
+    regressionChange_=new QComboBox;regressionChange_->hide();
+    auto pills=new QHBoxLayout;
+    for(const auto& item:QList<QPair<QString,QString>>{
+        {QStringLiteral("全部"),""},{QStringLiteral("新回退"),"REGRESSION"},{QStringLiteral("新通过"),"IMPROVEMENT"},
+        {QStringLiteral("持续通过"),"STABLE_PASS"},{QStringLiteral("持续失败"),"STABLE_FAIL"},{QStringLiteral("未完成 / 其他"),"OTHER"}}){
+        regressionChange_->addItem(item.first,item.second);auto button=new QPushButton(item.first);button->setCheckable(true);button->setProperty("change",item.second);
+        button->setObjectName("dailyCategory");button->setChecked(item.second.isEmpty());regressionPills_[item.second]=button;pills->addWidget(button);
+        connect(button,&QPushButton::clicked,this,[this,key=item.second]{selectDailyChange(key);});
+    }pills->addStretch();body->addLayout(pills);
+    regressionTable_=table({QStringLiteral("testcase"),QStringLiteral("基准结果"),QStringLiteral("对比结果"),QStringLiteral("变化"),QStringLiteral("日志对比")});
+    regressionTable_->setObjectName("dailyResults");regressionTable_->setWordWrap(true);regressionTable_->setSelectionMode(QAbstractItemView::SingleSelection);
+    regressionTable_->horizontalHeader()->setSectionResizeMode(0,QHeaderView::Stretch);
+    for(int column=1;column<5;++column){regressionTable_->horizontalHeader()->setSectionResizeMode(column,QHeaderView::Fixed);regressionTable_->setColumnWidth(column,column==4?110:120);}
+    regressionTable_->verticalHeader()->setDefaultSectionSize(72);body->addWidget(regressionTable_,1);
+    regressionSummary_=new QLabel(QStringLiteral("请选择日期和阶段，数据会自动查询。"));regressionSummary_->setObjectName("dailySummary");regressionSummary_->setWordWrap(true);body->addWidget(regressionSummary_);
+    auto footer=new QHBoxLayout;auto plan=new QPushButton(QStringLiteral("每日计划 / 完整性"));plan->setObjectName("dailyPlan");
+    auto first=new QPushButton(QStringLiteral("刷新 / 首页"));first->setObjectName("dailyRefresh");
+    regressionNext_=new QPushButton(QStringLiteral("下一页"));regressionNext_->setObjectName("dailyNext");regressionNext_->setEnabled(false);
+    footer->addWidget(plan);footer->addStretch();footer->addWidget(first);footer->addWidget(regressionNext_);body->addLayout(footer);layout->addWidget(panel,1);
+    regressionDebounce_.setSingleShot(true);regressionDebounce_.setInterval(280);
+    connect(&regressionDebounce_,&QTimer::timeout,this,[this]{queryDaily();});
+    connect(dateA_,&QDateEdit::dateChanged,this,[this]{scheduleDailyQuery();});
+    connect(dateB_,&QDateEdit::dateChanged,this,[this]{scheduleDailyQuery();});
+    connect(regressionStage_,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this]{scheduleDailyQuery();});
+    connect(regressionSearch_,&QLineEdit::textChanged,this,[this]{scheduleDailyQuery();});
+    connect(first,&QPushButton::clicked,this,[this]{queryDaily();});
     connect(regressionNext_,&QPushButton::clicked,this,[this]{queryDaily(true);});
-    auto hint=new QLabel(demo_?QStringLiteral("演示数据：PASS→FAIL 为新回退；TIMEOUT 和缺失结果另外展示。"):
-        QStringLiteral("只统计带 scheduled 来源和日期的定时任务；人工 / 未分类历史记录排除。重复记录按同日同阶段同 case 的最新 task_id 展示，每页 50 条。"));
-    hint->setWordWrap(true);layout->addWidget(hint);connect(compare,&QPushButton::clicked,this,[this]{queryDaily();});return widget;
+    connect(plan,&QPushButton::clicked,this,[this]{showDailyPlan();});
+    return widget;
 }

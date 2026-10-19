@@ -1,13 +1,13 @@
 {
   "project": "GalaxCore Regression Platform",
   "flavor": "clean-source-deployment",
-  "source_commit": "c365f4ab33a3f977e2647fcd34789e54a282334d",
-  "deployment_revision": "v1.9 - operator-confirmed offline recovery",
+  "source_commit": "ce18072a09f1bfd9a9648182ab52925c7878577d",
+  "deployment_revision": "v2.0 - daily comparison and unified light theme",
   "authentication": false,
   "database_schema": 6,
   "database": "not included; initialized on first Server start",
   "original_development_copy": "preserved unchanged",
-  "file_count": 169,
+  "file_count": 172,
   "files": [
     {
       "path": ".gitattributes",
@@ -341,8 +341,8 @@
     },
     {
       "path": "gui/qt/CMakeLists.txt",
-      "bytes": 920,
-      "sha256": "9ad1a1036857c05eaf55834453f90e009e690349acac3e8f4a538993fbd36097",
+      "bytes": 966,
+      "sha256": "301f39cc717f3ce9da722083495b2d98eb2dde44d7a408968a8a7e382d258476",
       "mode": "0o644"
     },
     {
@@ -364,9 +364,15 @@
       "mode": "0o644"
     },
     {
+      "path": "gui/qt/include/DailyStyle.h",
+      "bytes": 3046,
+      "sha256": "94c4e26f97b560bf1d0afb8c05571d374320257f6932a43c4721ccf555ad55ba",
+      "mode": "0o644"
+    },
+    {
       "path": "gui/qt/include/MainWindow.h",
-      "bytes": 4077,
-      "sha256": "090d1cdcbceeb07a163a5e3e3fb9486e0f706aa28ab00e160f6cc66b4283a13d",
+      "bytes": 4448,
+      "sha256": "7076a9f6fce830fd658b9e424d5298408b4b36a4b8d7e0e2f4e50d861a7dcf5e",
       "mode": "0o644"
     },
     {
@@ -389,14 +395,26 @@
     },
     {
       "path": "gui/qt/src/ConsolePages.cpp",
-      "bytes": 25282,
-      "sha256": "1531238f139e05b101c6f935be58e5f812223549645afe259b592713d803397f",
+      "bytes": 28259,
+      "sha256": "b2a595d71987db0f94e8e57372d9b9c88fb10c203581b7be1de8f19761bd0886",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/DailyComparison.cpp",
+      "bytes": 9415,
+      "sha256": "d9225b3ccd69ab08678b6dd34281bbbb755f913e97ea0b3cb35a2754d71f6b6d",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/DailyEvidence.cpp",
+      "bytes": 10540,
+      "sha256": "46cf477727513a4892176d9994ceda3bcfe51988e3cc444fd398fc29efb34130",
       "mode": "0o644"
     },
     {
       "path": "gui/qt/src/DailyView.cpp",
-      "bytes": 10694,
-      "sha256": "91174818f4365900343b63a26cee8a6ab3a6520ebf679a7d4fb3b386bfece644",
+      "bytes": 4470,
+      "sha256": "295bac1abce09b9b217f8b619e8dfc8228703f770623e76f269b02ec76096c0c",
       "mode": "0o644"
     },
     {
@@ -407,8 +425,8 @@
     },
     {
       "path": "gui/qt/src/MainWindow.cpp",
-      "bytes": 24717,
-      "sha256": "acc2c7c6cd3921444b3f3c6e142ea9f33df256f9de4ed48eacece3fedb21cd12",
+      "bytes": 24891,
+      "sha256": "76e5621d159ff618be27668e607bffb164ffc59a56edd77c742b47f87596de9b",
       "mode": "0o644"
     },
     {
@@ -455,8 +473,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 3177,
-      "sha256": "f81213cce3b70000b78027695706cfa4bc361ffac7e93baf6651444cc145a725",
+      "bytes": 3474,
+      "sha256": "accd0c652b65a683317f6887d8bae8d4681dc8535877fa13e86e9fdc90338ef5",
       "mode": "0o644"
     },
     {
@@ -551,8 +569,8 @@
     },
     {
       "path": "server/include/protocol/ApiQueries.h",
-      "bytes": 10858,
-      "sha256": "58cbf55ffd149427234b76dccfe376406b94cfddf0bc52ba96de7649c0e587e5",
+      "bytes": 10908,
+      "sha256": "5659a62b66403d4f5b4b284a82e09dce3cc3dcece8e6adb2af8ce7115271f1b1",
       "mode": "0o644"
     },
     {
@@ -749,8 +767,8 @@
     },
     {
       "path": "server/src/RegressionService.cpp",
-      "bytes": 14926,
-      "sha256": "9a7339706ed9d6b2e249b6ab1cb2e411c692e47bb467beb1412dd5526f4ac252",
+      "bytes": 15726,
+      "sha256": "d7a4d45f3624bad1983ce819481fd3747136df53de8c3cf020d1da8b7c205581",
       "mode": "0o644"
     },
     {

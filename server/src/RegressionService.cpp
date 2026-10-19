@@ -117,7 +117,8 @@ std::optional<RegressionQuery> RegressionQuery::parse(const nlohmann::json& requ
     if(!result.baseline_date.empty()&&(request.contains("before_task_id")||!result.revision.empty()||
        !result.batch_id.empty()||!result.case_path.empty()||!result.flow.empty()))return std::nullopt;
     if(!result.change.empty()&&result.change!="REGRESSION"&&result.change!="IMPROVEMENT"&&
-       result.change!="MISSING"&&result.change!="EXCEPTION"&&result.change!="UNCHANGED")return std::nullopt;
+       result.change!="MISSING"&&result.change!="EXCEPTION"&&result.change!="UNCHANGED"&&
+       result.change!="STABLE_PASS"&&result.change!="STABLE_FAIL"&&result.change!="OTHER")return std::nullopt;
     if (request.contains("limit")) {
         if (!request["limit"].is_number_integer()) return std::nullopt;
         const auto limit = request["limit"].get<int64_t>();
@@ -228,11 +229,15 @@ nlohmann::json RegressionService::compareDaily(const RegressionQuery& filter) co
     }
     nlohmann::json rows=nlohmann::json::array(),counts={{"REGRESSION",0},{"IMPROVEMENT",0},
         {"MISSING",0},{"EXCEPTION",0},{"UNCHANGED",0}},stages=nlohmann::json::object();
+    nlohmann::json summary={{"ALL",0},{"REGRESSION",0},{"IMPROVEMENT",0},
+        {"STABLE_PASS",0},{"STABLE_FAIL",0},{"OTHER",0}};
     uint64_t total=0;bool more=false;std::string last;
     for(const auto& entry:pairs){const auto* a=entry.second.first;const auto* b=entry.second.second;
         const auto ao=a?outcomeOf(*a):"MISSING",bo=b?outcomeOf(*b):"MISSING";
         const std::string change=!a||!b?"MISSING":ao=="PASS"&&bo=="FAIL"?"REGRESSION":
             ao=="FAIL"&&bo=="PASS"?"IMPROVEMENT":bo!="PASS"&&bo!="FAIL"?"EXCEPTION":"UNCHANGED";
+        const std::string display_change=change=="REGRESSION"||change=="IMPROVEMENT"?change:
+            ao=="PASS"&&bo=="PASS"?"STABLE_PASS":ao=="FAIL"&&bo=="FAIL"?"STABLE_FAIL":"OTHER";
         const auto* task=b?b:a;const auto stage=contextOf(*task,"template");
         if(!stages.contains(stage))stages[stage]={{"total",0},{"baseline",nlohmann::json::object()},
             {"comparison",nlohmann::json::object()},{"changes",{{"REGRESSION",0},{"IMPROVEMENT",0},
@@ -242,15 +247,19 @@ nlohmann::json RegressionService::compareDaily(const RegressionQuery& filter) co
             auto& tally=stats[item.first];tally[item.second]=tally.value(item.second,uint64_t(0))+1;}
         stats["changes"][change]=stats["changes"][change].get<uint64_t>()+1;
         if(!filter.search.empty()&&field(task->getPayload(),"case").find(filter.search)==std::string::npos)continue;
-        if(!filter.change.empty()&&change!=filter.change)continue;
+        // Card totals cover the complete stage/search scope, independent of the
+        // selected category and page. Keep legacy counts/change semantics intact.
+        summary["ALL"]=summary["ALL"].get<uint64_t>()+1;
+        summary[display_change]=summary[display_change].get<uint64_t>()+1;
+        if(!filter.change.empty()&&change!=filter.change&&display_change!=filter.change)continue;
         ++total;counts[change]=counts[change].get<uint64_t>()+1;
         if(entry.first<=filter.after_key)continue;
         if(rows.size()>=filter.limit){more=true;continue;}
         rows.push_back({{"key",entry.first},{"template",stage},{"case",field(task->getPayload(),"case")},
             {"baseline",a?rowOf(*a):nlohmann::json(nullptr)},{"comparison",b?rowOf(*b):nlohmann::json(nullptr)},
-            {"change",change}});last=entry.first;
+            {"change",change},{"display_change",display_change}});last=entry.first;
     }
-    return {{"items",rows},{"counts",counts},{"stages",stages},{"templates",templates},{"total",total},
+    return {{"items",rows},{"counts",counts},{"summary_counts",summary},{"stages",stages},{"templates",templates},{"total",total},
         {"has_more",more},{"next_after_key",more?nlohmann::json(last):nlohmann::json(nullptr)},
         {"snapshot_generation",snapshot.first},{"excluded_unclassified_or_manual",excluded},
         {"duplicate_records",duplicates},{"selection_policy","latest_task_id_per_template_case_date"},

@@ -72,6 +72,10 @@ private:
     QLineEdit* regressionSearch_{};
     QLabel* regressionSummary_{};
     QPushButton* regressionNext_{};
+    QLabel *regressionTitle_{}, *regressionSync_{};
+    QMap<QString,QPushButton*> regressionCards_, regressionPills_;
+    QTimer regressionDebounce_;
+    uint64_t regressionRequestEpoch_{0};
     Json regressionRows_=Json::array();
     QString regressionCursor_;
     bool regressionLoading_{false};
@@ -114,6 +118,9 @@ private:
     void showDailyPlan();
     void openLogs(const Json& task);
     void queryDaily(bool next=false);
+    void scheduleDailyQuery();
+    void selectDailyChange(const QString& change);
+    void openDailyEvidence(const Json& row, const QString& baseline, const QString& comparison);
     void note(const QString& text, bool error = false);
     void updateFreshness();
     void invalidateSnapshots(bool workers, bool tasks);
