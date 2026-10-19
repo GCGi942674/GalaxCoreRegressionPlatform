@@ -1,7 +1,7 @@
 #include "ConsoleSupport.h"
 
-MainWindow::MainWindow(GuiSettings settings, bool demo)
-    : settings_(std::move(settings)), demo_(demo), rpc_(this) {
+MainWindow::MainWindow(GuiSettings settings)
+    : settings_(std::move(settings)), rpc_(this) {
     setWindowTitle(QStringLiteral("GalaxCore Regression Platform 调度控制台 · UI v3")+
         (demo_?QStringLiteral("【离线演示 · 非真实工作机】"):QStringLiteral(" · ")+settings_.host+":"+QString::number(settings_.port))); resize(1280,820);
     setMinimumSize(1100,720);
@@ -44,7 +44,7 @@ MainWindow::MainWindow(GuiSettings settings, bool demo)
     bar->addStretch();connection_=new QLabel;connection_->setObjectName("connection");connection_->setTextFormat(Qt::PlainText);
     connection_->setMaximumWidth(360);connection_->setWordWrap(true);bar->addWidget(connection_);
     auto refresh=new QPushButton(QStringLiteral("刷新快照"));bar->addWidget(refresh);
-    auto role=new QPushButton(QStringLiteral("删除未启用"));role->setEnabled(false);role->setToolTip(QStringLiteral("待服务端接入管理员认证后开放"));bar->addWidget(role);
+    auto role=new QLabel(QStringLiteral("受信任内网 · 未启用认证"));role->setToolTip(QStringLiteral("可连接 Server 的用户均可管理工作机和删除已结束的任务记录。"));bar->addWidget(role);
     connect(refresh,&QPushButton::clicked,this,[this]{this->refresh();});bodyLayout->addWidget(top);
     if(demo_){auto demoBanner=new QLabel(QStringLiteral("交互评审模式　 ·　 示例数据与真实 Server 完全隔离，不发送任何任务"));demoBanner->setObjectName("demoBanner");bodyLayout->addWidget(demoBanner);}
     freshness_=new QLabel;freshness_->setWordWrap(true);
@@ -58,25 +58,7 @@ MainWindow::MainWindow(GuiSettings settings, bool demo)
     pages_->setCurrentIndex(1);
     const auto navigation=side->findChildren<QPushButton*>();for(int i=0;i<navigation.size();++i)navigation[i]->setChecked(i==1);
     for(auto button:findChildren<QPushButton*>())button->setCursor(button->isEnabled()?Qt::PointingHandCursor:Qt::ArrowCursor);
-    if (demo_) {
-        freshness_->hide();
-        for(const auto& machine:{"novarch4","novarch3","tiger"})
-            for(int i=1;i<=(std::string(machine)=="novarch4"?1:std::string(machine)=="novarch3"?3:2);++i)
-                workers_.push_back({{"machine_id",machine},{"worker_id",std::string(machine)+"-slot"+std::to_string(i)},{"slot_id","slot"+std::to_string(i)},{"status",std::string(machine)=="tiger"?"OFFLINE":"ONLINE"},{"used",i==1&&std::string(machine)!="tiger"?1:0},{"capacity",1},{"free",i==1&&std::string(machine)!="tiger"?0:1},{"control_supported",true},{"accepting_tasks",true}});
-        for(int batch=0;batch<7;++batch)for(int i=0;i<(batch==0?78:batch==1?35:12);++i){
-            const auto status=batch==0?(i<63?"SUCCEEDED":i<75?"FAILED":"TIMEOUT"):batch==1?(i<5?"RUNNING":"QUEUED"):batch==2?(i<4?"CANCELLED":"SUCCEEDED"):"SUCCEEDED";
-            const auto path=QStringLiteral("kintexuplus/xcku3p-ffvd900-1-i/%1/run.tcl").arg(i==0?QStringLiteral("convergentRoundingEven"):QStringLiteral("case_%1").arg(i+1,3,10,QChar('0')));
-            const auto batchId="demo-batch-"+std::to_string(batch+1);const std::string flow=batch%2?"route_design":"place_design";
-            tasks_.push_back({{"task_id",uint64_t(1000+batch*100+i)},{"status",status},{"target","xcku3p-ffvd900-1-i"},{"revision",batch<4?"19037":"19036"},
-                {"worker_id",std::string(status)=="QUEUED"?"":i%2?"novarch3-slot1":"novarch4-slot1"},{"batch_id",batchId},{"run_id","demo-run-"+std::to_string(batch*100+i)},
-                {"created_at_ms",int64_t(1792033500000)-batch*900000},
-                {"payload",{{"case",path.toStdString()},{"flow",flow},{"flow_config",{{"route_design",1},{"write_bitstream",1},{"bit_cmp",1}}},
-                    {"context",{{"batch_id",batchId},{"name",batch==0?"每日回归 · Place":batch==1?"人工验证 · Route":"每日回归批次 "+std::to_string(batch+1)},{"source",batch==1?"manual":"scheduled"},{"template",flow}}}}},
-                {"execution",{{"case_status",std::string(status)=="FAILED"?"FAIL":"PASS"},{"reason",std::string(status)=="FAILED"?"example routing failure":"pass"},{"case_reason",std::string(status)=="FAILED"?"DEMO_FAIL":"COMPARE_ARTIFACTS_PASS"}}}});
-        }
-        catalog_=exampleCatalog(); loadCatalog(); showWorkers(); machines_->setCurrentText("novarch4"); showTasks();
-        note(QStringLiteral("演示模式：所有数据和操作均为本地示例"));
-    } else {
+    {
         rpc_.configure(settings_.host,settings_.port,settings_.timeout);
         rpc_.request("query_capabilities",Json::object(),[this](RpcReply r){
             if (!r.ok) { note(r.error,true); return; }
@@ -244,6 +226,7 @@ void MainWindow::applyCatalog() {
 void MainWindow::resetFlowOptions() {
     flowOptions_->clear();
     const auto key=flow_->currentText().toStdString();
+    batchName_->setText(key.empty()?QString{}:QStringLiteral("人工验证 + ")+QString::fromStdString(key));
     const auto defaults=catalog_.is_object()&&catalog_.contains("templates")&&catalog_["templates"].contains(key)?
         catalog_["templates"][key].at("flow_config"):Json::object();
     const QStringList standard{"read_edif","read_xdc","report_timing_summary","report_utilization",
@@ -271,13 +254,13 @@ Json MainWindow::selectedFlowConfig() const {
 void MainWindow::submitBatch() {
     if(submitting_)return;auto paths=selectedCases(casesTree_);
     if(paths.isEmpty()||batchName_->text().trimmed().isEmpty()||(!demo_&&target_->text().trimmed().isEmpty())||revision_->currentText().isEmpty()||flow_->currentText().isEmpty()){
-        QMessageBox::warning(this,QStringLiteral("参数不完整"),QStringLiteral("选择 testcase，并填写名称、业务目标、版本和 flow。"));return;}
+        QMessageBox::warning(this,QStringLiteral("参数不完整"),QStringLiteral("请填写业务目标，并选择 testcase、ZIP 版本和执行模板。批次名称由模板自动生成。"));return;}
     if(QMessageBox::question(this,QStringLiteral("确认人工批次"),QStringLiteral("%1\n%2 个 testcase · r%3 · %4\n取消只处理未开始的 testcase。\n逐个提交，失败会保留已接收的任务，不自动重试。").arg(batchName_->text()).arg(paths.size()).arg(revision_->currentText()).arg(flow_->currentText()))!=QMessageBox::Yes)return;
     // The default UUID representation is {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}.
     // Remove its braces explicitly for compatibility with older Qt5 headers.
     manualBatch_="gui-"+QUuid::createUuid().toString().mid(1,36);pendingSubmissions_=Json::array();submitIndex_=0;
     const auto flowSnapshot=selectedFlowConfig();
-    for(const auto& path:paths){pendingSubmissions_.push_back({{"task_type","REGRESSION"},{"target",target_->text().toStdString()},{"revision",revision_->currentText().toStdString()},{"priority",priority_->value()},
+    for(const auto& path:paths){pendingSubmissions_.push_back({{"task_type","REGRESSION"},{"target",target_->text().trimmed().toStdString()},{"revision",revision_->currentText().toStdString()},{"priority",priority_->value()},
         {"submission_key",(manualBatch_+"-"+QString::number(pendingSubmissions_.size())).toStdString()},
         {"payload",{{"spec_version",2},{"case",path.toStdString()},{"flow",flow_->currentText().toStdString()},{"flow_config",flowSnapshot},{"timeout_seconds",timeout_->value()},
         {"context",{{"batch_id",manualBatch_.toStdString()},{"name",batchName_->text().toStdString()},{"suite","manual"},
@@ -309,15 +292,4 @@ void MainWindow::cancelSelection() {
     auto op=one?"cancel_task":"cancel_batch";
     if(!operations_.contains(op)){note(QStringLiteral("Server 未声明此操作"),true);return;}
     rpc_.request(op,one?Json{{"task_id",id.toULongLong()}}:Json{{"batch_id",batch.toStdString()}},[this](RpcReply r){if(!r.ok)QMessageBox::warning(this,QStringLiteral("取消未完成"),r.error);refresh();});
-}
-
-bool MainWindow::catalogProbe() const {
-    if(catalogLoading_||!catalog_.is_object()||!submit_->isEnabled()||flowOptions_->topLevelItemCount()<19)return false;
-    for(const char* key:{"server.work_root","server.artifact_root","server.templates_dir"})
-        if(!catalog_.contains("sources")||catalog_["sources"].value(key,std::string())!="READY")return false;
-    size_t leaves=0;
-    for(QTreeWidgetItemIterator it(casesTree_);*it;++it)if(!(*it)->data(0,Qt::UserRole).toString().isEmpty())++leaves;
-    if(leaves!=catalog_["cases"].size())return false;
-    std::fprintf(stderr,"QT_CATALOG_PROBE PASS cases=%zu revisions=%d templates=%d flow_options=%d\n",leaves,revision_->count(),flow_->count(),flowOptions_->topLevelItemCount());
-    return true;
 }

@@ -14,7 +14,7 @@ def load_config(role="server"):
     else:
         path = next((directory / "config" / name
                      for directory in (Path.cwd(),) + tuple(Path.cwd().parents)
-                     for name in (role + ".conf", "gcrp.conf")
+                     for name in (("worker.config", "worker.conf", "gcrp.conf") if role == "worker" else ("server.conf", "gcrp.conf"))
                      if (directory / "config" / name).is_file()), None)
         if path is None:
             raise ValueError("missing config; set GCRP_CONFIG")

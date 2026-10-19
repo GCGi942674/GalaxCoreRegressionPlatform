@@ -14,6 +14,8 @@ std::string toString(MessageType type) {
         case MessageType::QUERY_CATALOG: return "query_catalog";
         case MessageType::CONTROL_WORKERS: return "control_workers";
         case MessageType::CANCEL_TASK:    return "cancel_task";
+        case MessageType::DELETE_TASK: return "delete_task";
+        case MessageType::DELETE_BATCH: return "delete_batch";
         case MessageType::QUERY_BATCH:    return "query_batch";
         case MessageType::PUBLISH_DAILY_PLAN: return "publish_daily_plan";
         case MessageType::QUERY_DAILY_PLAN: return "query_daily_plan";
@@ -48,6 +50,8 @@ MessageType messageTypeFromString(const std::string& value) {
         {"query_catalog", MessageType::QUERY_CATALOG},
         {"control_workers", MessageType::CONTROL_WORKERS},
         {"cancel_task", MessageType::CANCEL_TASK},
+        {"delete_task", MessageType::DELETE_TASK},
+        {"delete_batch", MessageType::DELETE_BATCH},
         {"query_batch", MessageType::QUERY_BATCH},
         {"publish_daily_plan", MessageType::PUBLISH_DAILY_PLAN},
         {"query_daily_plan", MessageType::QUERY_DAILY_PLAN},

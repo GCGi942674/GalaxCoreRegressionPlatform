@@ -41,11 +41,19 @@ void MainWindow::showTasks() {
         const auto created=t.value("created_at_ms",int64_t(0));parent->setText(6,created?QDateTime::fromMSecsSinceEpoch(created).toString("yyyy-MM-dd\nHH:mm:ss"):QStringLiteral("—"));
         auto controls=new QWidget;auto actions=new QHBoxLayout(controls);actions->setContentsMargins(4,4,4,4);actions->setSpacing(5);
         auto details=new QPushButton(QStringLiteral("详情"));auto cancel=new QPushButton(QStringLiteral("停止后续"));auto deletion=new QPushButton(QStringLiteral("删除"));
-        deletion->setEnabled(false);deletion->setProperty("kind","danger");deletion->setToolTip(QStringLiteral("待服务端管理员身份认证接入后启用"));
+        deletion->setEnabled(!demo_&&!tasksStale_&&operations_.contains("delete_batch")&&running==0&&queued==0&&batch!=QStringLiteral("无批次 / 单任务"));
+        deletion->setProperty("kind","danger");deletion->setToolTip(QStringLiteral("仅删除已结束批次的记录；运行或排队中的批次不可删除。日志和防重复提交信息保留。单任务请在详情中删除。"));
         cancel->setEnabled(queued>0&&(demo_||(!tasksStale_&&operations_.contains("cancel_batch")))&&batch!=QStringLiteral("无批次 / 单任务"));
         actions->addWidget(details);actions->addWidget(cancel);actions->addWidget(deletion);
         connect(details,&QPushButton::clicked,this,[this,batch]{openBatch(batch);});
         connect(cancel,&QPushButton::clicked,this,[this,parent]{tasksTree_->setCurrentItem(parent);cancelSelection();});
+        connect(deletion,&QPushButton::clicked,this,[this,batch]{
+            if(tasksStale_||!operations_.contains("delete_batch"))return;
+            if(QMessageBox::warning(this,QStringLiteral("确认删除任务记录"),QStringLiteral("删除批次 %1 的全部已结束记录？\n记录将从查询页面移除，不能从 GUI 撤销。原始日志、防重复提交信息和每日计划保留。\n服务端会再次检查整个批次，含活动任务则整批拒绝。").arg(batch),QMessageBox::Yes|QMessageBox::No,QMessageBox::No)!=QMessageBox::Yes)return;
+            rpc_.request("delete_batch",{{"batch_id",batch.toStdString()},{"confirm",true}},[this](RpcReply r){
+                if(!r.ok){note(QStringLiteral("删除未确认，请刷新核对：")+r.error,true);return;}
+                note(QStringLiteral("已删除 %1 条任务记录，日志保留。").arg(r.result.value("deleted",uint64_t(0))));refresh();});
+        });
         tasksTree_->setItemWidget(parent,7,controls);parent->setSizeHint(0,QSize(180,92));
         if(batch==selected)tasksTree_->setCurrentItem(parent);
     }
@@ -185,6 +193,13 @@ void MainWindow::openTask(uint64_t id) {
     auto display=[this](RpcReply r){if(!r.ok){QMessageBox::warning(this,QStringLiteral("查询失败"),r.error);return;}
         auto dialog=new QDialog(this);dialog->setAttribute(Qt::WA_DeleteOnClose);dialog->setWindowTitle(QStringLiteral("Task 详情与日志"));dialog->resize(850,650);auto layout=new QVBoxLayout(dialog);
         auto body=new QPlainTextEdit(QString::fromStdString(r.result.dump(2)));body->setReadOnly(true);layout->addWidget(body,1);
+        const auto state=text(r.result,"status");auto deletion=new QPushButton(QStringLiteral("删除此 testcase 记录"));deletion->setProperty("kind","danger");
+        deletion->setEnabled(!demo_&&operations_.contains("delete_task")&&(state=="SUCCEEDED"||state=="FAILED"||state=="TIMEOUT"||state=="CANCELLED"));layout->addWidget(deletion);
+        connect(deletion,&QPushButton::clicked,dialog,[this,dialog,id=r.result.at("task_id")]{
+            if(QMessageBox::warning(dialog,QStringLiteral("确认删除记录"),QStringLiteral("仅删除该 testcase 的查询记录，保留日志与防重复提交信息。此操作不能从 GUI 撤销。"),QMessageBox::Yes|QMessageBox::No,QMessageBox::No)!=QMessageBox::Yes)return;
+            rpc_.request("delete_task",{{"task_id",id},{"confirm",true}},[this,dialog=QPointer<QDialog>(dialog)](RpcReply reply){
+                if(!reply.ok){note(QStringLiteral("删除未确认，请刷新核对：")+reply.error,true);return;}if(dialog)dialog->close();refresh();});
+        });
         auto logs=new QPushButton(QStringLiteral("查看 Server 归档日志"));layout->addWidget(logs);connect(logs,&QPushButton::clicked,this,[this,task=r.result]{openLogs(task);});dialog->show();};
     if(demo_){Json t={{"task_id",id},{"run_id","demo-run"},{"status","SUCCEEDED"},{"payload",{{"case","convergentRoundingEven/run.tcl"},{"flow","route"}}}};display({true,{},t,{}});}
     else rpc_.request("query_task",{{"task_id",id}},display);

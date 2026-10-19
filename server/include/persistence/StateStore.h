@@ -27,15 +27,19 @@ public:
     StateStore& operator=(const StateStore&) = delete;
 
     std::vector<PersistedTask> loadTasks(TaskId id = 0, bool active_only = false,
-                                         const std::string& batch_id = "") const;
+                                         const std::string& batch_id = "", bool include_deleted = false) const;
     std::pair<TaskId,uint64_t> highWaterMarks() const;
     nlohmann::json statusCounts() const;
     void publishDailyPlan(const nlohmann::json& manifest);
     nlohmann::json dailyPlan(const std::string& day) const;
     bool hasBatch(const std::string& id) const;
+    bool batchDeleted(const std::string& id) const;
+    size_t deletedCount(const std::string& batch_id) const;
+    // Logical deletion preserves run ownership, submission keys and high-water marks.
+    size_t deleteRecords(TaskId id, const std::string& batch_id);
     void visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,TaskId id=0,
                     bool active_only=false,const std::string& batch_id="",
-                    const std::vector<std::string>& dates={}) const;
+                    const std::vector<std::string>& dates={}, bool include_deleted=false) const;
     std::vector<TaskGroupSnapshot> taskGroups(const std::string& target,const std::string& revision,
                                              const std::string& batch_id) const;
     uint64_t excludedRegressionCount() const;

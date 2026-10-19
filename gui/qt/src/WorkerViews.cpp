@@ -9,7 +9,10 @@ void MainWindow::showWorkers() {
         for(int i=0;i<machines_->count();++i){const auto name=machines_->itemText(i);int slotCount=0,busy=0;bool online=false;
             for(const auto& w:workers_)if(text(w,"machine_id")==name&&visible(w)){++slotCount;busy+=w.value("used",0)>0;online=online||text(w,"status")=="ONLINE";}
             auto item=new QListWidgetItem(hostsList_);item->setData(Qt::UserRole,name);item->setSizeHint(QSize(180,90));
-            auto label=new QLabel(name.toHtmlEscaped()+"<br><span style='color:#8493a8;font-size:11px'>"+(workersStale_&&!demo_?QStringLiteral("？ 数据过期"):online?QStringLiteral("● 在线"):QStringLiteral("○ 离线"))+QStringLiteral("<br>%1 slots · %2 运行</span>").arg(slotCount).arg(busy));label->setContentsMargins(14,8,8,8);label->setAttribute(Qt::WA_TransparentForMouseEvents);hostsList_->setItemWidget(item,label);
+            const auto status=workersStale_&&!demo_?QStringLiteral("？ 数据过期"):
+                online?QStringLiteral("<span style='color:#3b82f6'>●</span> 在线"):
+                       QStringLiteral("<span style='color:#94a3b8'>●</span> 离线");
+            auto label=new QLabel(name.toHtmlEscaped()+"<br><span style='color:#8493a8;font-size:11px'>"+status+QStringLiteral("<br>%1 slots · %2 运行</span>").arg(slotCount).arg(busy));label->setContentsMargins(14,8,8,8);label->setAttribute(Qt::WA_TransparentForMouseEvents);hostsList_->setItemWidget(item,label);
         }
         hostsList_->setCurrentRow(machines_->currentIndex());}
     slotsTable_->setRowCount(0);hostTitle_->setText(machines_->currentText().isEmpty()?QStringLiteral("暂无在线工作机"):machines_->currentText());
@@ -34,12 +37,18 @@ void MainWindow::showWorkers() {
         const auto maintenanceText=phase=="PENDING"?QStringLiteral("等待排空"):phase=="RUNNING"?QStringLiteral("SVN 更新中"):phase=="FAILED"?QStringLiteral("更新失败 / 保持停派"):phase=="SUCCEEDED"?QStringLiteral("更新完成"):QString{};
         if(!maintenanceText.isEmpty())slotsTable_->item(row,2)->setText(slotsTable_->item(row,2)->text()+"\n"+maintenanceText);
         slotsTable_->item(row,2)->setToolTip(QString::fromStdString(maintenance.dump(2)));
-        auto controls=new QWidget;auto actions=new QHBoxLayout(controls);actions->setContentsMargins(2,2,2,2);
+        auto controls=new QWidget;auto actions=new QHBoxLayout(controls);actions->setContentsMargins(6,2,6,2);actions->setSpacing(8);
         const auto worker=text(w,"worker_id");
-        auto toggle=new QPushButton(requested?QStringLiteral("停止接单"):QStringLiteral("恢复接单"));
-        auto update=new QPushButton(QStringLiteral("更新 SVN"));actions->addWidget(toggle);actions->addWidget(update);
-        const bool enabled=demo_&&!managementPending_&&online;
-        if(!demo_){toggle->setToolTip(QStringLiteral("管理员身份认证尚未接入，远程工作机管理暂时禁用。"));update->setToolTip(toggle->toolTip());}
+        auto toggle=new QPushButton(requested?QStringLiteral("下线"):QStringLiteral("上线"));toggle->setObjectName("slotAcceptButton");
+        auto update=new QPushButton(QStringLiteral("更新"));update->setObjectName("slotUpdateButton");actions->addWidget(toggle);actions->addWidget(update);
+        // Cell widgets are not reliably included by ResizeToContents on older Qt5.
+        // Reserve both button widths explicitly; a narrow window scrolls instead of clipping.
+        for(auto button:{toggle,update})button->setMinimumWidth(qMax(112,button->sizeHint().width()));
+        controls->setMinimumWidth(actions->minimumSize().width());
+        slotsTable_->setColumnWidth(4,qMax(slotsTable_->columnWidth(4),controls->minimumWidth()+16));
+        const bool enabled=(demo_||(!workersStale_&&operations_.contains("control_workers")))&&!managementPending_&&online;
+        toggle->setToolTip(QStringLiteral("仅改变接单策略，不终止正在运行的 testcase。"));
+        update->setToolTip(QStringLiteral("排空当前任务后更新独立 SVN 副本；需要新版 Worker 支持。"));
         toggle->setEnabled(enabled&&(requested||!pending));
         update->setEnabled(enabled&&!pending&&(demo_||w.value("control_supported",false)));
         connect(toggle,&QPushButton::clicked,this,[this,worker,requested]{controlWorkers(false,worker,requested?"pause":"resume");});
@@ -54,11 +63,10 @@ void MainWindow::showWorkers() {
         .arg(machines_->currentText()).arg(onlineCount).arg(offlineCount).arg(legacyCount));
     if(machines_->count()==0)workerSummary_->setText(workersStale_?QStringLiteral("尚未确认 Server 工作机信息，请检查连接。"):
         QStringLiteral("当前没有在线工作机。可勾选查看离线历史 slots；不会用演示数据填充。"));
-    for(auto button:hostControlButtons_){button->setEnabled(demo_&&anyOnline&&!managementPending_);if(!demo_)button->setToolTip(QStringLiteral("管理员身份认证尚未接入，远程工作机管理暂时禁用。"));}
+    for(auto button:hostControlButtons_){button->setEnabled((demo_||(!workersStale_&&operations_.contains("control_workers")))&&anyOnline&&!managementPending_);button->setToolTip(QStringLiteral("管理当前整机 slots；恢复接单仅影响 ONLINE slots。"));}
 }
 
 void MainWindow::controlWorkers(bool machine,const QString& target,const QString& action) {
-    if(!demo_){note(QStringLiteral("管理员身份认证尚未接入，远程工作机管理暂时禁用。"),true);return;}
     if(target.isEmpty()||managementPending_)return;
     if(!demo_&&(workersStale_||!operations_.contains("control_workers"))){
         note(QStringLiteral("状态过期或 Server 不支持管理接口，请先刷新 / 升级。"),true);return;}

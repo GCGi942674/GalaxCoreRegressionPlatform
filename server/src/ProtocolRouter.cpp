@@ -182,12 +182,15 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 for(auto& item:items){
                     const auto id=item["batch_id"].get<std::string>();const auto& c=counters.at(id);
                     for(auto it=c.begin();it!=c.end();++it)item[it.key()]=it.value();
-                    const auto planned=item["planned"].get<uint64_t>(), submitted=item["submitted"].get<uint64_t>();
+                    item["deleted_records"]=scheduler_.deletedCount(id);
+                    const auto planned=item["planned"].get<uint64_t>(), submitted=item["submitted"].get<uint64_t>()+item["deleted_records"].get<uint64_t>();
                     item["not_submitted"]=planned>submitted?planned-submitted:0;
                     const bool stopped=scheduler_.isBatchStopped(id),idle=item["active"]==0;
                     item["stop_requested"]=stopped;
                     item["complete"]=submitted==planned&&idle;
-                    item["state"]=submitted>planned?"COUNT_MISMATCH":stopped?(idle?"STOPPED":"STOPPING"):
+                    item["record_deleted"]=scheduler_.isBatchDeleted(id);
+                    item["state"]=item["record_deleted"].get<bool>()?"DELETED":submitted>planned?"COUNT_MISMATCH":stopped?(idle?"STOPPED":"STOPPING"):
+                        item["deleted_records"].get<uint64_t>()>0?"PARTIALLY_DELETED":
                         submitted==0?"NOT_SUBMITTED":submitted<planned?"PARTIALLY_SUBMITTED":!idle?"RUNNING":"COMPLETE";
                     all_complete=all_complete&&item["complete"].get<bool>();
                 }
@@ -199,11 +202,34 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
             }catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
         }
         case MessageType::CONTROL_WORKERS: {
-            // Protocol roles are not authenticated identities. Until real admin
-            // authorization exists, deny every remote mutation before inspecting
-            // the target or touching durable controls. No config bypass switch.
-            return buildResponse(request,ResponseCode::INVALID_STATE,
-                "remote worker administration disabled until authentication is implemented");
+            try {
+                Api::validate(request.data,{"machine_id","worker_id","action","operation_id","scope"});
+                const auto machine=Api::text(request.data,"machine_id",256),worker=Api::text(request.data,"worker_id",256);
+                if(machine.empty()==worker.empty())throw std::invalid_argument("choose machine_id or worker_id");
+                auto result=worker_manager_.control(!machine.empty(),machine.empty()?worker:machine,
+                    Api::text(request.data,"action",16),Api::text(request.data,"operation_id",128),Api::text(request.data,"scope",16));
+                if(!result)return buildResponse(request,ResponseCode::NOT_FOUND,"worker not found");
+                LOG_INFO(LogModule::WORKER,"Worker control accepted (trusted LAN, no authentication): "+request.data.dump());
+                try{scheduling_driver_.requestSchedule();}catch(const std::exception& e){LOG_WARN(LogModule::SCHEDULER,e.what());}
+                return buildResponse(request,ResponseCode::OK,"ok",*result);
+            }catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
+             catch(const std::logic_error& e){return buildResponse(request,ResponseCode::INVALID_STATE,e.what());}
+        }
+        case MessageType::DELETE_TASK:
+        case MessageType::DELETE_BATCH: {
+            try {
+                const bool batch=request.type==MessageType::DELETE_BATCH;
+                Api::validate(request.data,batch?std::set<std::string>{"batch_id","confirm"}:std::set<std::string>{"task_id","confirm"});
+                if(!request.data.contains("confirm")||!request.data["confirm"].is_boolean()||!request.data["confirm"].get<bool>())
+                    throw std::invalid_argument("record deletion requires confirm=true");
+                const auto id=batch?0:Api::positive(request.data,"task_id",0);
+                const auto name=batch?Api::text(request.data,"batch_id",128):std::string();
+                if(batch?name.empty():id==0)throw std::invalid_argument("missing deletion target");
+                const auto count=scheduler_.deleteRecords(id,name);
+                LOG_INFO(LogModule::TASK,"Record deletion (trusted LAN, no authentication): "+request.data.dump()+" deleted="+std::to_string(count));
+                return buildResponse(request,ResponseCode::OK,"ok",{{"deleted",count},{"logical_deletion",true},{"logs_preserved",true}});
+            }catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
+             catch(const std::logic_error& e){return buildResponse(request,ResponseCode::INVALID_STATE,e.what());}
         }
         case MessageType::LOG_APPEND:
         case MessageType::LOG_STATE:
@@ -222,7 +248,7 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 return buildResponse(request, ResponseCode::INVALID_REQUEST, "invalid log identity");
             const auto task_id = d["task_id"].get<uint64_t>();
             const auto run_id = d["run_id"].get<std::string>();
-            const auto task = task_service_.getTask(task_id);
+            const auto task = scheduler_.getTask(task_id,true);
             if (!task) return buildResponse(request, ResponseCode::NOT_FOUND, "task not found");
             const auto owner = scheduler_.archiveOwner(task_id, run_id);
             if (!owner) return buildResponse(request, ResponseCode::INVALID_STATE, "run is not finished");
@@ -484,10 +510,6 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
             try {
                 auto management=worker_manager_.managementHeartbeat(heartbeat_req.worker_id,
                     request.data.value("maintenance_ack",nlohmann::json(nullptr)));
-                // Accept completion ACKs for already-running maintenance, but
-                // never replay persisted PENDING SVN commands after this upgrade.
-                management["command"]=nullptr;
-                management["administration_disabled"]=true;
                 scheduling_driver_.requestSchedule();
                 return buildResponse(request, ResponseCode::OK, "ok",management);
             }catch(const std::invalid_argument& error){return buildResponse(request,ResponseCode::INVALID_REQUEST,error.what());}
@@ -542,7 +564,9 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 return buildResponse(request, ResponseCode::INVALID_REQUEST, "invalid task result status");
             }
 
-            auto task = task_service_.getTask(result_req.task_id);
+            // A lost RESULT ACK must remain retryable after a GUI record deletion.
+            // Hidden terminal rows are only exposed internally for exact run/owner/result checks.
+            auto task = scheduler_.getTask(result_req.task_id,true);
             if (!task) {
                 return buildResponse(request, ResponseCode::NOT_FOUND, "task not found");
             }

@@ -150,16 +150,16 @@ inline Json capabilities(const Json& q) {
         {"operations", {"submit_task", "query_task", "query_tasks", "query_workers", "query_status",
             "query_capabilities", "cancel_task", "query_batch", "cancel_batch", "query_regression",
             "query_progress", "query_rollback", "query_catalog", "query_logs", "read_log",
-            "publish_daily_plan", "query_daily_plan"}},
+            "publish_daily_plan", "query_daily_plan", "control_workers", "delete_task", "delete_batch"}},
         {"limits", {{"page_size", 50}, {"progress_page_size", 20}, {"frame_bytes", 1048576},
             {"log_read_bytes",131072},{"log_file_bytes",1073741824}}},
         {"features", {{"remote_cancel", false}, {"cancel_queued", true},
             {"worker_inventory_persistent", false}, {"authentication", false},
-            {"worker_controls_persistent",true}, {"worker_maintenance_v1",false},
-            {"remote_worker_management",false}, {"administration_disabled",true},
+            {"worker_controls_persistent",true}, {"worker_maintenance_v1",true},
+            {"remote_worker_management",true}, {"administration_disabled",false},
             {"archive_sha256_receipts",true}, {"task_group_sql_index",true},
             {"daily_plan_v1",true}, {"archive_lifecycle_v1",true},
-            {"record_deletion",false},
+            {"record_deletion",true}, {"record_deletion_mode","terminal_only_logical"},
             {"cross_page_snapshot", false}, {"project_scope", false}}}};
 }
 } // namespace GCRP::Api

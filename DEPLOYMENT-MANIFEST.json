@@ -1,0 +1,1027 @@
+{
+  "project": "GalaxCore Regression Platform",
+  "flavor": "clean-source-deployment",
+  "source_commit": "c1a3b957f4bb481c4cca388566eaf9c160546cef",
+  "deployment_revision": "20261019-clean-release-v5",
+  "authentication": false,
+  "database_schema": 6,
+  "database": "not included; initialized on first Server start",
+  "original_development_copy": "preserved unchanged",
+  "file_count": 169,
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 19,
+      "sha256": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c",
+      "mode": "0o644"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 417,
+      "sha256": "a2bbb48f4114a3228e05116c40fa4c191ceffb505f7ab2fb056a52089deece10",
+      "mode": "0o644"
+    },
+    {
+      "path": "client/CMakeLists.txt",
+      "bytes": 305,
+      "sha256": "daf2d996790856afe42c9a0e688cb5227d2c82715019ad86a62d1414514ff891",
+      "mode": "0o644"
+    },
+    {
+      "path": "client/include/GcrpClient.h",
+      "bytes": 1179,
+      "sha256": "1bfeb456d98d530b4e7b12a365284df718ddec1a156b116d636d7c83847a8ba8",
+      "mode": "0o644"
+    },
+    {
+      "path": "client/src/GcrpClient.cpp",
+      "bytes": 6317,
+      "sha256": "53eba4cdb711d05f3734b90fd6169ffaa38246b9dff405bcd4df6f7e9107bce4",
+      "mode": "0o644"
+    },
+    {
+      "path": "client/src/GcrpClientMain.cpp",
+      "bytes": 16912,
+      "sha256": "602886ecf81d880b5d449ac94bf064cfba1ef9b981fa020a9792345529eccfa0",
+      "mode": "0o644"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "bytes": 1805,
+      "sha256": "8ea6677a84a69e25fcbb1e395a4a556af7bc23a91b5031a7bea07303e9bcfde5",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/CMakeLists.txt",
+      "bytes": 1271,
+      "sha256": "d3e09f3816f182c987ffa2c93b82d217d844cb8f664dc7d1321dbee57fbb6912",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/Buffer.h",
+      "bytes": 733,
+      "sha256": "3a450ae154e9af61ce5188291a69e787883a9b1fd3af2e548ce4328e05a761ed",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/config/Config.h",
+      "bytes": 816,
+      "sha256": "cfdde4d6567e2f6cfa2a72a8aab9f6a6e79526bf48acbcaecb0129637453fa5d",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/logger/Logger.h",
+      "bytes": 1609,
+      "sha256": "18ab1452fb8e2ded85d82151daf42baa01ba3106883683a8a20d468d07849b14",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/logger/LogLevel.h",
+      "bytes": 560,
+      "sha256": "b4c77ca86b6e6415d779334658b384bc9f63d847b841af3359d7204b13537934",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/logger/LogMacros.h",
+      "bytes": 753,
+      "sha256": "6496dd89c9f066f7c1c7f9ebcde0682010f1e8546d104f09b6e8753c415a76b1",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/logger/LogModule.h",
+      "bytes": 678,
+      "sha256": "36c47274a7bedcfc0d8b18405f0ca425e6931cd3b4e01bc6d08875560e202fc6",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/Logging.h",
+      "bytes": 189,
+      "sha256": "383db48816d577601cf26659e3f0ae75c9d5f5310e9e4ddea10db13aa44b5ab3",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/MetricCounter.h",
+      "bytes": 608,
+      "sha256": "a00868ccb23ea3e234f94da27b96fc91ce4c66086b43f48acc3152d6e650f999",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/ConnectionRole.h",
+      "bytes": 1956,
+      "sha256": "02c3ca70f5634d598eff3b2685190e23522a658225afd55082f8115d9daec537",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/dto/Response.h",
+      "bytes": 383,
+      "sha256": "d9b775b237280791ea897226e03ab8fd6696bee67418432fda23bfb91fed1bdd",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/dto/TaskDTO.h",
+      "bytes": 1894,
+      "sha256": "aebd8baedacff5f3ea93ec4060f9a42e364aa70da51be8f6bd75ce447746dafb",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/dto/WorkerDTO.h",
+      "bytes": 841,
+      "sha256": "1f9dc9f48c87794414ef7cdf7f7d2924f53eba66cc3de99e337afa85fa8c7e4e",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/Message_codec.h",
+      "bytes": 513,
+      "sha256": "6d13e3ce85a75e0bcd39836aff4208813257b072a7961064806d2b42ea187f2d",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/MessageType.h",
+      "bytes": 864,
+      "sha256": "c6f6b5bda0cc95fde0f6c08b9eb35f036ad3f5df8d9c1f2bca40224c06e1ee2e",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/ProtocolCodec.h",
+      "bytes": 824,
+      "sha256": "18741b0843ea07d6f99e06d66054a94e4145ca928c2ed26cd795aed74d31b951",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/ProtocolError.h",
+      "bytes": 528,
+      "sha256": "19f06501f0ae23f2b1565a93dd6697ebc1b9743408153482a22c2895ccc80aa4",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/ProtocolMessage.h",
+      "bytes": 408,
+      "sha256": "2a006304fc03393b0a766ff2d57a999a9f01c35c599f4f388e96552881605b3c",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/protocol/ProtocolVersion.h",
+      "bytes": 220,
+      "sha256": "e6f425d40743314a254728ad02472311098efa1c738188f049af19afa07398df",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/Scope_guard.h",
+      "bytes": 801,
+      "sha256": "8ed0a638a312f473e9736a1ed99195618f1aad896946e6a44f655e605fe3b221",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/Sha256.h",
+      "bytes": 3211,
+      "sha256": "df32b6b0378352486eaa6aedf55a8a9afc700e2deb866e4b9e5e5afb7673a901",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/task/RegressionPayload.h",
+      "bytes": 3513,
+      "sha256": "3aed9440d1f18c7f120f95c0d4b48db0a052c215f7d47589816781dafb8d12b1",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/task/Task.h",
+      "bytes": 3212,
+      "sha256": "d1a58a863e22cdac99021cf287b3edc84e9388bdb0bedf6a031fa9ad2f73c599",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/task/TaskLimits.h",
+      "bytes": 309,
+      "sha256": "b1906f8a4842830eeb94014f24aa291384c0f39fea6a8b8f1b134428310c731e",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/task/TaskQuery.h",
+      "bytes": 1352,
+      "sha256": "45c8e4f3f4404b04577381121d9982384373572ac778588713e83e5e3f9b0c3f",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/task/TaskStatus.h",
+      "bytes": 318,
+      "sha256": "463f05180907148a02cda0481790686adb665cfcd2fbda5eb8bd64c873d4efd4",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/task/TaskType.h",
+      "bytes": 228,
+      "sha256": "885b9cebcd991c68bb18e7445236addda19818f72a9e6b3d0da935bbc0ac2958",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/Thread_pool.h",
+      "bytes": 547,
+      "sha256": "2418131fc7312a3271a3f19290afc95af92de7e2e9df24ad0583d1ab841eaa0a",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/Utils.h",
+      "bytes": 318,
+      "sha256": "9f900ec14e85e1350ddbc7cece987749fee539b3b774bd3b9eee9c8f2b8c82c7",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/worker/Worker.h",
+      "bytes": 2729,
+      "sha256": "0364c64fc2c0317d3b08c418fdd6fa0a815aef55bec445f693903e2699929254",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/include/worker/WorkerStatus.h",
+      "bytes": 260,
+      "sha256": "84d8e6c41b333fe9c4da5e9089dcbfe10a91512800f2d1d698048b77b7281cec",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Buffer.cpp",
+      "bytes": 1877,
+      "sha256": "4dac24982d7fd277bc3840c9c0dc9f821bf672d1382c20d86b0bd7193bc15af2",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Config.cpp",
+      "bytes": 4638,
+      "sha256": "b91a8470ff5de69c61f8460855ed5909f4a740e03d3e4bba77f74597866ab573",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Logger.cpp",
+      "bytes": 5561,
+      "sha256": "271e2367000af6113dee7d53c8c276ec9ee5dff1fecf5e7acc7f73b588a4b6f6",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/MessageType.cpp",
+      "bytes": 4094,
+      "sha256": "e1e152a911e1992daa4e691e2faae349c1095164bc8a48713242393f152d56e0",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/MetricCounter.cpp",
+      "bytes": 1261,
+      "sha256": "35d11974d07c34a2859bb17f6881d7c1fbfb12968472924dbca874c2aeac817e",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/protocol/Message_codec.cpp",
+      "bytes": 1269,
+      "sha256": "79eb61ac007ee9277c7d1c4f26cc8e05a26d23dcdd9a90ec3957b3f522b2b9a0",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/ProtocolCodec.cpp",
+      "bytes": 4890,
+      "sha256": "19bfa62ef759d3212ee7c7b9b5376d0b1a16ef3957cef5d921cd3d7dfa827dcf",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Response.cpp",
+      "bytes": 1151,
+      "sha256": "09c3324af91515f701055d650134aa1af61f4cc3fdabe025d7658669651438de",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Task.cpp",
+      "bytes": 3575,
+      "sha256": "1c5223eaf4f24d48977885fca3c3663e37dddb9dc6fb1971f2b5dc757a50855d",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/TaskDTO.cpp",
+      "bytes": 8773,
+      "sha256": "06ff67aba0c4c39530ba69707e4199a368e50d23df5fd1ede05ed8ad2bded9f3",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Thread_pool.cpp",
+      "bytes": 1220,
+      "sha256": "7d6c3cc8276a8c1b49ba18bc67588316c7ceacd145d8397dd10592daaa8116bd",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Utils.cpp",
+      "bytes": 1098,
+      "sha256": "4f95feb360c001a4ca091dff215ea252f53c6e3780164da4f24ae7a16f4286fa",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/Worker.cpp",
+      "bytes": 1312,
+      "sha256": "5097aac369cb2025575d3f117665ed7c4351763a305610e6d03e3f971aa6767b",
+      "mode": "0o644"
+    },
+    {
+      "path": "common/src/WorkerDTO.cpp",
+      "bytes": 3666,
+      "sha256": "65bb11af0cfdf2a36ab3729ed6c25db5b56b9e98a9d2cdbe86d7fbe05e96d326",
+      "mode": "0o644"
+    },
+    {
+      "path": "config/server.conf",
+      "bytes": 1084,
+      "sha256": "e2e605d07c9c83759035e7d1e27ed4c52d1d4c37cacd882807422d5281ee6661",
+      "mode": "0o600"
+    },
+    {
+      "path": "config/worker.config",
+      "bytes": 621,
+      "sha256": "b0d10c3f345c423c83658ef507fb827c2fdc877d79e91f9d4cdea16cfb0e3295",
+      "mode": "0o600"
+    },
+    {
+      "path": "database/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/CMakeLists.txt",
+      "bytes": 920,
+      "sha256": "9ad1a1036857c05eaf55834453f90e009e690349acac3e8f4a538993fbd36097",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/include/ArchiveDownload.h",
+      "bytes": 7288,
+      "sha256": "bb7ac04df97d1d4f5c508964627f1554ae67092f477b32a28ce2d4b785f94e47",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/include/CaseListImport.h",
+      "bytes": 2150,
+      "sha256": "c07def781ac9d7ea994f79390f97cfe0b524abf4fb9a3c172cf23b82c4301ba7",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/include/ConsoleSupport.h",
+      "bytes": 4042,
+      "sha256": "5f0252dcd861342cb85b0bbc5074c371a7ef19367f9dac42285b09b29faab380",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/include/MainWindow.h",
+      "bytes": 3968,
+      "sha256": "41343d14c4cec242f8adeb2b04da79df01de6e2fd580a1e3b4d7ec25537ec129",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/include/RerunTask.h",
+      "bytes": 1151,
+      "sha256": "4b04187318804be21ab0b8a317e2feb9b0ebe6f1b480afbe016f5bbe415059c6",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/include/RpcClient.h",
+      "bytes": 632,
+      "sha256": "a6cfa17c5cd9fd06297d99f68166c2888ef70f0d1d2a6640fae8fc91bc16f34d",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/include/Theme.h",
+      "bytes": 15850,
+      "sha256": "c11d3ef0f60178978cc4c98d729a16099e0209df27d321a83b2d3a963e90d04a",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/ConsolePages.cpp",
+      "bytes": 24821,
+      "sha256": "dd01a1cca76bf66458c298e3a3d7c39a911136da7d6b2272834da5b224af39ec",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/DailyView.cpp",
+      "bytes": 10694,
+      "sha256": "91174818f4365900343b63a26cee8a6ab3a6520ebf679a7d4fb3b386bfece644",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/main.cpp",
+      "bytes": 1699,
+      "sha256": "e395f9573dccff88b11e65a6cc12b2f5afe668e63c7a9c4555c9b23e367821a8",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/MainWindow.cpp",
+      "bytes": 24717,
+      "sha256": "acc2c7c6cd3921444b3f3c6e142ea9f33df256f9de4ed48eacece3fedb21cd12",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/RpcClient.cpp",
+      "bytes": 3842,
+      "sha256": "580834154985b6ae29ab3d079988ef1eaeb500bffb2703cc1dd2821b70948b12",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/TaskViews.cpp",
+      "bytes": 37190,
+      "sha256": "8f3e593b316d7ab3b36695a1c49b08c545e20ecbc5f32a1fb1e4910245ca1f49",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/WorkerViews.cpp",
+      "bytes": 10202,
+      "sha256": "e66936611f52c90ad6ae2f6a0d00038a96f03cb69ba484a5f68282ea95c4ac1f",
+      "mode": "0o644"
+    },
+    {
+      "path": "logs/daily/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0o644"
+    },
+    {
+      "path": "logs/server/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0o644"
+    },
+    {
+      "path": "logs/workers/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0o644"
+    },
+    {
+      "path": "Makefile",
+      "bytes": 1608,
+      "sha256": "4418534c94f1924f26ad9850c7be7045b320f2a01fad2d90fb8a9f74c82fbd2e",
+      "mode": "0o644"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6746,
+      "sha256": "52d964acef418d2cd1fd95fbcc3a109a89efa4118703ad274d4686093db148dc",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/clock.py",
+      "bytes": 18786,
+      "sha256": "bf385a75b346b3681aa80b841d3c06f3d5191ee5bb895c0e94331d077dd71afe",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/CMakeLists.txt",
+      "bytes": 1115,
+      "sha256": "2d157b863dccb538209d5e2c293d64938bd29f19ff569f9a5c19c8510060f251",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/daily_log.py",
+      "bytes": 2326,
+      "sha256": "d82a94af2f3b5ebc1f8250d5981918a7fe23552218c4f811c05949a0212213f1",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/Acceptor.h",
+      "bytes": 527,
+      "sha256": "2b646942adec172fe7e35269004679b909446da1a6c11a885baf5a711e82bd1e",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/Connection.h",
+      "bytes": 2736,
+      "sha256": "cff9bfd4633112123a58371012d5a9399839da7939fb71e82436133889b529e6",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/ConnectionSession.h",
+      "bytes": 957,
+      "sha256": "79b580be3db42942540066a1d032802a6e922955d458a4074c94930c314360b2",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/EchoHandler.h",
+      "bytes": 186,
+      "sha256": "92b58fa609dfc7fddaf8187f194cf245c8f4eb380a0c7e9674992a76fbd620c8",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/EchoServer.h",
+      "bytes": 2233,
+      "sha256": "19fa3affe041fefd4a33082b5df049d942bb31b580b424be9a40e0edd3a05225",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/EventLoop.h",
+      "bytes": 1969,
+      "sha256": "83c8c0aa07338df88bcb227b4c42b48800cac99a840e24f2572261bfa58f60d4",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/EventLoopThread.h",
+      "bytes": 462,
+      "sha256": "164fbd2f0217a61b27d2a1406c3497176a5aa4c1373e9959aa3fe24e6d1425e3",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/EventLoopThreadPool.h",
+      "bytes": 528,
+      "sha256": "5b11b3254b21750d6c04c93657a66a40b0e6989a4188ddbaa6de43229c59eb6a",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/log/RunLogArchive.h",
+      "bytes": 1328,
+      "sha256": "a4548b0d889a3e7fb60086ca419be775650e157cd061d9ae543941e5eb74fbce",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/Message.h",
+      "bytes": 183,
+      "sha256": "bd70646113f9f8422ccdeb530a2a5d5f28a51d57dd8104b9ff47881d0f8d611e",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/persistence/StateStore.h",
+      "bytes": 2996,
+      "sha256": "0cdcb096355192d708a3366b99202c98edd3af0856a07d5a711921ad0a9b2db2",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/progress/ProgressService.h",
+      "bytes": 1077,
+      "sha256": "44a5119bd94b75fbf4f74ed45d65636b01801580b591954a92eedb444f29c601",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/protocol/ApiQueries.h",
+      "bytes": 9835,
+      "sha256": "90b512dd24cf14949e98a9162d1f5bbacab44150e80f3d8f89260968c39cd384",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/protocol/DailyPlan.h",
+      "bytes": 1601,
+      "sha256": "99b2bc5c4a546ee9614c184433339cb1c35f4f7523a3621b2b307b1fdb8a426c",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/protocol/GuiCatalog.h",
+      "bytes": 516,
+      "sha256": "58dd683c655df4df9c3c282fd32a26a644bc9241c86ce8bad3ec27fd3b115046",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/protocol/ProtocolRouter.h",
+      "bytes": 1963,
+      "sha256": "62b1cd53a62897e284d522f93c425efcfa65ee1ea8bf175c24a77931b9de63e4",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/protocol/TaskListQuery.h",
+      "bytes": 7502,
+      "sha256": "5a4bfb42ae76134c5eee7b9c455a06f161dc264f960e39ace031c12ea93113a7",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/regression/RegressionService.h",
+      "bytes": 1665,
+      "sha256": "f99c82ce8dfeabdf850384fbde42d40da4b1718ea038b3366058cfb433314272",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/scheduler/Scheduler.h",
+      "bytes": 5154,
+      "sha256": "38e0e51e6cb5800081f1fc6e6720378c054e123b3e7cfcfe89bf4c8d87234cf4",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/scheduler/SchedulingCoordinator.h",
+      "bytes": 804,
+      "sha256": "3e1961c5273a43364b439fdf7a3cf6301dffed5ce40dee71e51d51865d359e18",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/scheduler/SchedulingDriver.h",
+      "bytes": 673,
+      "sha256": "7d08750c123de1cd42602ffbc3684289e26422656e77175d5278e6e90d9889a1",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/ServerMetrics.h",
+      "bytes": 2463,
+      "sha256": "7fea27fa1020a5505f4c36cbe4305c8d02f04b7b35abf3eb453800cbe90cbd3b",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/task/TaskIdGenerator.h",
+      "bytes": 690,
+      "sha256": "0c46ab42b8466bdd210ebeb288a30c44fdf2cbf13d97f237155b57411399d2bf",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/task/TaskService.h",
+      "bytes": 1179,
+      "sha256": "a1a1dd587375ce2fca69bca67a10c0c512a099756d336d821445c1a2c3bdf386",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/worker/NetworkWorkerDispatcher.h",
+      "bytes": 1095,
+      "sha256": "0d98c70265a33d4db7626c03a8ccc792425d4fc16c6c5033f5c352526266ec36",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/worker/WorkerConnectionRegistry.h",
+      "bytes": 1674,
+      "sha256": "bb59a6f301e7bc5fff16fd91d1399662261dca38dacad9d6499eabd04db01b81",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/worker/WorkerDispatcher.h",
+      "bytes": 393,
+      "sha256": "60d4a722bca76cd4a1e660e8b1a289fc2bd6ffff38b2a7ad2067525069220b31",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/worker/WorkerManager.h",
+      "bytes": 2064,
+      "sha256": "a7771e13150e6c1b70d16a0d4e3fe92fce3d504585738fbbad62dabede01b556",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/worker/WorkerSession.h",
+      "bytes": 2193,
+      "sha256": "a01df66f86908d7261d2781db5340fb07f465a3dbe58e354abfff455475e2f56",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/WorkerServer.h",
+      "bytes": 2199,
+      "sha256": "95624c70be74c0f90b391964bf52fc89f527a3701bfe2cfa95b43075a49299eb",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/WorkerSessionHandler.h",
+      "bytes": 1345,
+      "sha256": "c0eb3c107ad8c173055cad149621a6c796266ca9879a79e2d41a6b218144bec7",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/Acceptor.cpp",
+      "bytes": 3435,
+      "sha256": "4ddaf9be8f77c3a68511e11f4d5efc1db8e0cee23001373998bc6ebefacf4167",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/Connection.cpp",
+      "bytes": 8998,
+      "sha256": "459605bb6d1ca792e703833c4ffdbc2c920483cc9a0da64a173531634b7ac378",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/ConnectionSession.cpp",
+      "bytes": 3600,
+      "sha256": "5dabeadbb4b157965c314b83ab3aee5e8f2cb345da1c60f27bdef06ae3d66da0",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/EchoHandler.cpp",
+      "bytes": 263,
+      "sha256": "8e200915de760a15aadb6629dfbe3ad8923ea2d4e10ddaa9d0365c84d084176a",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/EchoServer.cpp",
+      "bytes": 18805,
+      "sha256": "aaa7dcff74e3da7f56c458d25af6b53a81c4bc8e032853fd595a1d110b7d8ed5",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/EventLoop.cpp",
+      "bytes": 8962,
+      "sha256": "25e633b67ce84cf723362d094d0e1ea5c4deb3e564ce076cc9a7e452c4a8573f",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/EventLoopThread.cpp",
+      "bytes": 1017,
+      "sha256": "e196ef63d0d3d636fff467cdf5eaaabed72aaf98212bd88859ead4999cf483b7",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/EventLoopThreadPool.cpp",
+      "bytes": 1076,
+      "sha256": "8889d81e3f2f27b1012a86915a2ee51282a63b775b80552e9eaaa9ef657039cf",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/GuiCatalog.cpp",
+      "bytes": 9054,
+      "sha256": "acc196267514c69e5ed45bd30b45ed87453c81cfc889affd955615337a6f9ed2",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/main.cpp",
+      "bytes": 3686,
+      "sha256": "049a7ec552b354993a47bf9f1801567ef376d7dbd10f297f22e879dccc389853",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/Message.cpp",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/NetworkWorkerDispatcher.cpp",
+      "bytes": 2815,
+      "sha256": "8907c62c1e009a388a6aaead4e42d82d1d824fa71fc058b0b82f7856e959e1ea",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/ProgressService.cpp",
+      "bytes": 11395,
+      "sha256": "154210aa2727f644484f40740895d4b5fdfdf06980b44b71800e4a1fb3aec6b6",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/ProtocolRouter.cpp",
+      "bytes": 37484,
+      "sha256": "8f06939c22512f4107ab3389b6b61b2d6a12cf27931db506ab370f31a6f7d0ec",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/RegressionService.cpp",
+      "bytes": 14926,
+      "sha256": "9a7339706ed9d6b2e249b6ab1cb2e411c692e47bb467beb1412dd5526f4ac252",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/RunLogArchive.cpp",
+      "bytes": 16278,
+      "sha256": "96d003e37d1512838d0a987f106268785769ff8a505cd62b559a9ece0c1c1fa9",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/Scheduler.cpp",
+      "bytes": 32575,
+      "sha256": "08b71ceadfd13ddcde5f4861fb0445f746dfc373eacc47b47426da0e02fa027d",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/SchedulingCoordinator.cpp",
+      "bytes": 1516,
+      "sha256": "8e8790a7994154438f985f69d97639993d66e93ea08b21586998f8d6dbe98717",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/SchedulingDriver.cpp",
+      "bytes": 955,
+      "sha256": "4fd2ed417d07d39c70e2f9d01e803e572cee3409d226b7dc37f498abe51ad566",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/ServerMetrics.cpp",
+      "bytes": 3588,
+      "sha256": "5b458563ab8bdd6032adf7fe5da066973d2030de76a176fee7847efc52b823d1",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/StateStore.cpp",
+      "bytes": 28276,
+      "sha256": "c1836b8b968803b4e4f620a99098bc443efb0458355ca992adc731c2926eda6f",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/TaskIdGenerator.cpp",
+      "bytes": 170,
+      "sha256": "a7275da3eb421352cf9531d3d918befb37acef912e1fa3c5b818b93963deddb5",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/TaskService.cpp",
+      "bytes": 4222,
+      "sha256": "24cae78d8bdd33f887437c5e973188141d1d6de27a46b4931188000645a02810",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/WorkerConnectionRegistry.cpp",
+      "bytes": 3372,
+      "sha256": "2c96bcaa1f134612d971b1c24f54591593c16e17e076f2cee7959538f8ff50fa",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/WorkerManager.cpp",
+      "bytes": 15281,
+      "sha256": "bafeffdce40904aba85c1c7862c826d84d8b0e4408cba36aa23857614bf09ea7",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/WorkerServer.cpp",
+      "bytes": 7850,
+      "sha256": "5facd3b9c6eb5e44174596fbb3452698575700a279702aaa251ed63231e19afc",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/WorkerSession.cpp",
+      "bytes": 6487,
+      "sha256": "bdb5a6d327f7a9b70e7212e777d162fc8888893ba5b2342c248ffcf28123e729",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/WorkerSessionHandler.cpp",
+      "bytes": 1122,
+      "sha256": "92e82726a618fbe49aec9e11d9df76fdfd484213dd1644f40ed97956664f53b2",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/start.sh",
+      "bytes": 182,
+      "sha256": "b401f1e7f023727d3c420a18e2029ee443ff34abef24332ede71f39c8c8914bc",
+      "mode": "0o755"
+    },
+    {
+      "path": "server/status.sh",
+      "bytes": 183,
+      "sha256": "781ff2517e51b9b1257a299e53deeb49927dba85fddd31e0525c6ddc4a52f656",
+      "mode": "0o755"
+    },
+    {
+      "path": "server/stop.sh",
+      "bytes": 181,
+      "sha256": "05da8f4cf0fcb36b902848b10717213b01e96d95b8c6175be9720adcc910b525",
+      "mode": "0o755"
+    },
+    {
+      "path": "server/Tasks.yaml",
+      "bytes": 847,
+      "sha256": "b1b957dcc4a41938ee64aa2df3397c4b38fafe26809e034823684a5914f7354a",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/templates/place_design.json",
+      "bytes": 556,
+      "sha256": "341b1376216daede5dcd95f853da12ce0ef171859c85ac75696f3556fa9f3cd3",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/templates/report_timing_summary.json",
+      "bytes": 565,
+      "sha256": "17bd2f5ae1edeca8de388705dbf0358aafd84640109022ffda23025fc576b219",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/templates/report_utilization.json",
+      "bytes": 562,
+      "sha256": "fc5d072f374d0db584f4f0ee5563645769bb25394e46f585023927460726cde2",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/templates/route_design.json",
+      "bytes": 556,
+      "sha256": "e75202118d6e32bf45fe5491febbdbddc2b7ba89903b0670644fbedcb6aa2c58",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/templates/route_design_from_place.json",
+      "bytes": 567,
+      "sha256": "20a6bf065d4abe782b6874a0f0d5846d76d33779e08f25ba95f98996fdcffeb7",
+      "mode": "0o644"
+    },
+    {
+      "path": "third_party/nlohmann/json.hpp",
+      "bytes": 919975,
+      "sha256": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6",
+      "mode": "0o644"
+    },
+    {
+      "path": "tools/backup_database.py",
+      "bytes": 5658,
+      "sha256": "36dec51e981d8a1914e6cb108cd7d4c536d0842f31a27bc4e3418fb436acf650",
+      "mode": "0o644"
+    },
+    {
+      "path": "tools/health_check.py",
+      "bytes": 2436,
+      "sha256": "1af9d1688e9a852d699f61eeb04fa6c2bcc5c3ff33493f940a9c760c2e7b200f",
+      "mode": "0o644"
+    },
+    {
+      "path": "tools/service_control.py",
+      "bytes": 8140,
+      "sha256": "7bbd1c5689e1f519efc26a420fe01aa9a019507c277c91a02207dcb3e052eacb",
+      "mode": "0o644"
+    },
+    {
+      "path": "tools/service_log.py",
+      "bytes": 2973,
+      "sha256": "ee3d4c61b857018e0ae2cd53c07655ddf821304c833d1425a3271d337241ae11",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/execution_guard.py",
+      "bytes": 4158,
+      "sha256": "6b28b0b6b36d1ae95cb23688d132df65aec0aea78098ef7c8972726fb6105d46",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/gcrp_worker.py",
+      "bytes": 35634,
+      "sha256": "9b95d0cdcb5441fec6854df76735a8c0777baeb1647ab9d7930da17113c90b01",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/log_retention.py",
+      "bytes": 4385,
+      "sha256": "f312c0e1cd8d6d7c9bf0709e015eaaf2f26435cf0e6b73a4bdbe54cdfd8510dd",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/maintenance.py",
+      "bytes": 5900,
+      "sha256": "646a3c75fb122af3a33d1d09a256d0c08eb89c12f1fc4b2bd250d9293dfd86c2",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/pjtest_adapter.py",
+      "bytes": 36915,
+      "sha256": "6de81a990f3479f6118c4ff86f65f01cabfb71f8331d5792520618acdf0646f3",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/process_executor.py",
+      "bytes": 3021,
+      "sha256": "df2c24f852a72f47b661c0a288b177938e18c5a6edb13a4b7a51cebf17808d22",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/publish_artifact_manifest.py",
+      "bytes": 1877,
+      "sha256": "395bef77cbcbf10c9931f4f59c200458f10d4b325512d0a7fb89ad6f8a7c1ed6",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/recovery_journal.py",
+      "bytes": 814,
+      "sha256": "1b8e73cf108a2b2632ad751455f98024c731a138d3a2b7d47d65fccc5806d813",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/reload.sh",
+      "bytes": 183,
+      "sha256": "0beaa42d86d92ffdfad8465368d61d917dbed91ae076843146962299bb2240b5",
+      "mode": "0o755"
+    },
+    {
+      "path": "worker/runtime_config.py",
+      "bytes": 1358,
+      "sha256": "3427ebd16eab544cd4edc0d61181e084492406886cf54fa1740b56cd4b44951b",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/slot_identity.py",
+      "bytes": 5074,
+      "sha256": "db8e44ee2791133dee3825451b5cde52e7734ca67c4fc8f3e0035b1b745f71cb",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/slot_manager.py",
+      "bytes": 9198,
+      "sha256": "d019d57f9925d237f65fd0caca166e5b9baf71ad911f5765cda218f1ff6128ec",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/slot_process.py",
+      "bytes": 2498,
+      "sha256": "cdc7315f4bb10611aedbc7887e4ac3f9d06f1c301d581096181dbd28f35a1926",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/start.sh",
+      "bytes": 182,
+      "sha256": "3ec4c33356b32608dae58f3799dbb34560743a73dc78d44660c5cdfd35f24221",
+      "mode": "0o755"
+    },
+    {
+      "path": "worker/status.sh",
+      "bytes": 183,
+      "sha256": "c51198659dcf6a4300f895387934c6125f6c556f6d1bc122c3abbe2b2b2a4af8",
+      "mode": "0o755"
+    },
+    {
+      "path": "worker/stop.sh",
+      "bytes": 181,
+      "sha256": "b5f3a9029ad6fa0ba16ecfb4fca419264506ceb2e559884f617d77bbe632e6b1",
+      "mode": "0o755"
+    },
+    {
+      "path": "worker/workers_slots/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker-output/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0o644"
+    }
+  ]
+}

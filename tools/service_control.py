@@ -107,10 +107,10 @@ def main():
             print('[SERVICE] already running pid={}'.format(record['pid']))
             return 0
         config = Path(explicit) if explicit else next(
-            (root / 'config' / name for name in (args.role + '.conf', 'gcrp.conf')
+            (root / 'config' / name for name in (('worker.config', 'worker.conf', 'gcrp.conf') if args.role == 'worker' else ('server.conf', 'gcrp.conf'))
              if (root / 'config' / name).is_file()), None)
         if config is None or not config.is_file():
-            parser.error('missing config/{}.conf (or config/gcrp.conf)'.format(args.role))
+            parser.error('missing config/server.conf or config/worker.config for selected role')
         if args.role == 'worker':
             command = [sys.executable, '-B', '-u', str(root / 'worker/slot_manager.py')]
             host = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in socket.gethostname())

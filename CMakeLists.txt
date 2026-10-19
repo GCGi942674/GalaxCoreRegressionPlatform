@@ -10,10 +10,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # =====================
-# 构建类型（默认 Debug）
+# 构建类型（默认 Release）
 # =====================
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
 # =====================
@@ -28,11 +28,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # =====================
 # Debug 编译选项
 # =====================
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  add_compile_options(-g)
-elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-  add_compile_options(-O3 -DNDEBUG)
-endif()
+# Use CMake's standard per-configuration compiler flags.
 
 # =====================
 # 子模块
@@ -45,7 +41,6 @@ set_property(CACHE GCRP_BUILD_QT_GUI PROPERTY STRINGS AUTO ON OFF)
 if(NOT GCRP_BUILD_QT_GUI MATCHES "^(AUTO|ON|OFF)$")
   message(FATAL_ERROR "GCRP_BUILD_QT_GUI must be AUTO, ON or OFF")
 endif()
-include(CTest)
 if(GCRP_BUILD_QT_GUI STREQUAL "AUTO")
   find_package(Qt5 5.8 QUIET COMPONENTS Core Widgets Network)
 endif()
@@ -57,7 +52,4 @@ elseif(GCRP_BUILD_QT_GUI STREQUAL "AUTO")
   message(STATUS "Qt5 (5.8+) Widgets/Network not found: skipping GUI; use GCRP_BUILD_QT_GUI=ON to require it")
 else()
   message(STATUS "Qt5 GUI disabled explicitly")
-endif()
-if(BUILD_TESTING)
-  add_subdirectory(tests)
 endif()

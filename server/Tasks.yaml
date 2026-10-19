@@ -2,22 +2,22 @@
 # and point server.work_root at the server's test2 checkout.
 tasks:
   - template: report_utilization
-    target: /home/user3/workspace/galaxcore/galaxcore/test2/runlist
+    target: /home/chenggong/workspace/galaxcore/test2/runlist
     suite: daily_regression
     max_retry: 0
   - template: report_timing_summary
-    target: /home/user3/workspace/galaxcore/galaxcore/test2/runlist
+    target: /home/chenggong/workspace/galaxcore/test2/runlist
     suite: daily_regression
     max_retry: 0
   - template: route_design_from_place
-    target: /home/user3/workspace/galaxcore/galaxcore/test2/runlist
+    target: /home/chenggong/workspace/galaxcore/test2/runlist
     suite: daily_regression
     max_retry: 0
   - template: route_design
-    target: /home/user3/workspace/galaxcore/galaxcore/test2/runlist
+    target: /home/chenggong/workspace/galaxcore/test2/runlist
     suite: daily_regression
     max_retry: 0
   - template: place_design
-    target: /home/user3/workspace/galaxcore/galaxcore/test2/runlist
+    target: /home/chenggong/workspace/galaxcore/test2/runlist
     suite: daily_regression
     max_retry: 0

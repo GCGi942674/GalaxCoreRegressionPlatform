@@ -14,6 +14,29 @@ import tempfile
 import time
 
 
+def _restore_dump(copy, statements):
+    """Replay old CPython dumps without restoring AUTOINCREMENT state too early."""
+    sequences = []
+    sequence_write = re.compile(r'^\s*(?:DELETE\s+FROM|INSERT\s+INTO)\s+"?sqlite_sequence"?(?:\s|;)', re.I)
+    for statement in statements:
+        if sequence_write.match(statement):
+            sequences.append(statement)
+            continue
+        if statement.strip().rstrip(';').upper() == 'COMMIT':
+            # Python 3.6 emits sqlite_sequence before tables sorted after 'sqlite_'.
+            # Those CREATE TABLE ... AUTOINCREMENT statements must run first.
+            exists = copy.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone()
+            if exists:
+                for sequence in sequences:
+                    copy.execute(sequence)
+            elif any(item.lstrip().upper().startswith('INSERT') for item in sequences):
+                raise RuntimeError('cannot restore AUTOINCREMENT state without sqlite_sequence')
+            sequences = []
+        copy.execute(statement)
+    if sequences:
+        raise RuntimeError('incomplete SQLite dump: missing COMMIT')
+
+
 def _backup_database(config, logical=False):
     source = Path(config['database.path']).expanduser().resolve(strict=True)
     root = Path(config.get('database.backup_root') or str(source.parent / 'backups')).expanduser()
@@ -46,13 +69,14 @@ def _backup_database(config, logical=False):
                     # Python 3.6 lacks Connection.backup. Hold one read snapshot
                     # while reconstructing a private database, not a raw file copy.
                     original.execute('BEGIN')
-                    for statement in original.iterdump():
-                        copy.execute(statement)
+                    _restore_dump(copy, original.iterdump())
                     version = original.execute('PRAGMA user_version').fetchone()[0]
                     copy.execute('PRAGMA user_version={}'.format(int(version)))
                     copy.commit()
                 if copy.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                     raise RuntimeError('backup integrity check failed')
+                if copy.execute('PRAGMA foreign_key_check').fetchone() is not None:
+                    raise RuntimeError('backup foreign key check failed')
         with temporary.open('rb') as stream:
             os.fsync(stream.fileno())
         os.replace(str(temporary), str(target))

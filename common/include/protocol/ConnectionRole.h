@@ -10,6 +10,7 @@ constexpr bool isClientRequest(MessageType type) {
            type == MessageType::QUERY_CAPABILITIES ||
            type == MessageType::QUERY_CATALOG ||
            type == MessageType::CONTROL_WORKERS ||
+           type == MessageType::DELETE_TASK || type == MessageType::DELETE_BATCH ||
            type == MessageType::CANCEL_TASK || type == MessageType::QUERY_BATCH ||
            type == MessageType::PUBLISH_DAILY_PLAN || type == MessageType::QUERY_DAILY_PLAN ||
            type == MessageType::CANCEL_BATCH || type == MessageType::QUERY_REGRESSION ||

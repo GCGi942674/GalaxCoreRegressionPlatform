@@ -110,7 +110,7 @@ StateStore::StateStore(const std::string& path, int busy_timeout_ms) {
             check(sqlite3_step(version.value), db_);
             schema_version = sqlite3_column_int(version.value, 0);
         }
-        if (schema_version < 0 || schema_version > 5)
+        if (schema_version < 0 || schema_version > 6)
             throw std::runtime_error("unsupported GCRP database schema version");
         exec("BEGIN IMMEDIATE");
         try {
@@ -125,12 +125,14 @@ StateStore::StateStore(const std::string& path, int busy_timeout_ms) {
             exec("CREATE TABLE IF NOT EXISTS task_query_index (task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id), outcome TEXT NOT NULL, source TEXT NOT NULL, day TEXT NOT NULL, template TEXT NOT NULL, has_case INTEGER NOT NULL, classified INTEGER NOT NULL)");
             exec("CREATE INDEX IF NOT EXISTS query_day ON task_query_index(day,template,task_id)");
             exec("CREATE INDEX IF NOT EXISTS query_classified ON task_query_index(classified,has_case)");
+            exec("CREATE TABLE IF NOT EXISTS deleted_tasks (task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id))");
+            exec("CREATE TABLE IF NOT EXISTS deleted_batches (batch_id TEXT PRIMARY KEY REFERENCES batches(batch_id))");
             if(schema_version<4){
                 Statement index(db_,"INSERT OR REPLACE INTO task_query_index VALUES(?,?,?,?,?,?,?)");
                 visitTasks([&](Task&& task,uint64_t){bindQueryIndex(index,task);});
             }
             exec("CREATE TABLE IF NOT EXISTS daily_plans (day TEXT PRIMARY KEY, manifest_json TEXT NOT NULL)");
-            exec("PRAGMA user_version=5");
+            exec("PRAGMA user_version=6");
             exec("UPDATE tasks SET recovery_required=1 WHERE status IN ('ASSIGNED','RUNNING')");
             exec("COMMIT");
         } catch (...) { exec("ROLLBACK"); throw; }
@@ -162,7 +164,7 @@ std::pair<TaskId,uint64_t> StateStore::highWaterMarks() const {
 
 nlohmann::json StateStore::statusCounts() const {
     std::lock_guard<std::mutex> lock(mutex_);nlohmann::json result=nlohmann::json::object();
-    Statement query(db_,"SELECT status,COUNT(*) FROM tasks GROUP BY status");
+    Statement query(db_,"SELECT status,COUNT(*) FROM tasks WHERE task_id NOT IN (SELECT task_id FROM deleted_tasks) GROUP BY status");
     for(;;){auto step=sqlite3_step(query.value);if(step==SQLITE_DONE)break;check(step,db_);result[column(query.value,0)]=sqlite3_column_int64(query.value,1);}
     return result;
 }
@@ -184,9 +186,44 @@ void StateStore::publishDailyPlan(const nlohmann::json& manifest) {
 }
 bool StateStore::hasBatch(const std::string& id) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    Statement query(db_,"SELECT 1 FROM batches WHERE batch_id=?");query.text(1,id);
+    Statement query(db_,"SELECT 1 FROM batches WHERE batch_id=? AND batch_id NOT IN (SELECT batch_id FROM deleted_batches)");query.text(1,id);
     const auto step=sqlite3_step(query.value);if(step==SQLITE_DONE)return false;
     check(step,db_);return true;
+}
+
+bool StateStore::batchDeleted(const std::string& id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statement query(db_,"SELECT 1 FROM deleted_batches WHERE batch_id=?");query.text(1,id);
+    const auto step=sqlite3_step(query.value);if(step==SQLITE_DONE)return false;
+    check(step,db_);return true;
+}
+
+size_t StateStore::deletedCount(const std::string& batch_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statement query(db_,"SELECT COUNT(*) FROM tasks t JOIN deleted_tasks d ON d.task_id=t.task_id WHERE t.batch_id=?");query.text(1,batch_id);
+    check(sqlite3_step(query.value),db_);return static_cast<size_t>(sqlite3_column_int64(query.value,0));
+}
+
+size_t StateStore::deleteRecords(TaskId id,const std::string& batch_id) {
+    if((id==0)==batch_id.empty())throw std::invalid_argument("choose task_id or batch_id");
+    std::lock_guard<std::mutex> lock(mutex_);
+    exec("BEGIN IMMEDIATE");
+    try {
+        const std::string where=id?"task_id=?":"batch_id=?";
+        Statement active(db_,("SELECT 1 FROM tasks WHERE "+where+" AND status IN ('PENDING','QUEUED','ASSIGNED','RUNNING') LIMIT 1").c_str());
+        if(id)active.number(1,checkedId(id));else active.text(1,batch_id);
+        const auto step=sqlite3_step(active.value);
+        if(step==SQLITE_ROW)throw std::logic_error("active tasks cannot be deleted; cancel queued cases and wait for running cases to finish");
+        check(step,db_);
+        Statement mark(db_,("INSERT OR IGNORE INTO deleted_tasks SELECT task_id FROM tasks WHERE "+where).c_str());
+        if(id)mark.number(1,checkedId(id));else mark.text(1,batch_id);mark.run();
+        const auto count=static_cast<size_t>(sqlite3_changes(db_));
+        if(!batch_id.empty()){
+            Statement batch(db_,"INSERT OR IGNORE INTO deleted_batches SELECT batch_id FROM batches WHERE batch_id=?");batch.text(1,batch_id);batch.run();
+            Statement stop(db_,"UPDATE batches SET stop_requested=1 WHERE batch_id=?");stop.text(1,batch_id);stop.run();
+        }
+        exec("COMMIT");return count;
+    }catch(...){exec("ROLLBACK");throw;}
 }
 
 nlohmann::json StateStore::dailyPlan(const std::string& day) const {
@@ -196,15 +233,16 @@ nlohmann::json StateStore::dailyPlan(const std::string& day) const {
     check(step,db_);return nlohmann::json::parse(column(query.value,0));
 }
 
-std::vector<PersistedTask> StateStore::loadTasks(TaskId id, bool active_only,const std::string& batch_id) const {
+std::vector<PersistedTask> StateStore::loadTasks(TaskId id, bool active_only,const std::string& batch_id,bool include_deleted) const {
     std::vector<PersistedTask> result;
-    visitTasks([&](Task&& task,uint64_t sequence){result.push_back({std::move(task),sequence});},id,active_only,batch_id);
+    visitTasks([&](Task&& task,uint64_t sequence){result.push_back({std::move(task),sequence});},id,active_only,batch_id,{},include_deleted);
     return result;
 }
 
-void StateStore::visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,TaskId id,bool active_only,const std::string& batch_id,const std::vector<std::string>& dates) const {
+void StateStore::visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,TaskId id,bool active_only,const std::string& batch_id,const std::vector<std::string>& dates,bool include_deleted) const {
     std::lock_guard<std::mutex> lock(mutex_);
     std::string sql="SELECT task_id,task_type,target,revision,priority,status,payload_json,execution_json,COALESCE(worker_id,''),retry_count,queue_sequence,COALESCE(run_id,''),recovery_required,created_at_ms,COALESCE(started_at_ms,0),COALESCE(finished_at_ms,0) FROM tasks WHERE 1=1";
+    if(!include_deleted)sql+=" AND task_id NOT IN (SELECT task_id FROM deleted_tasks)";
     if(id)sql+=" AND task_id=?";
     if(active_only)sql+=" AND status IN ('PENDING','QUEUED','ASSIGNED','RUNNING')";
     if(!batch_id.empty())sql+=" AND batch_id=?";
@@ -242,7 +280,7 @@ void StateStore::visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,
 
 uint64_t StateStore::excludedRegressionCount() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    Statement query(db_,"SELECT COUNT(*) FROM task_query_index WHERE classified=0 AND has_case=1");
+    Statement query(db_,"SELECT COUNT(*) FROM task_query_index WHERE classified=0 AND has_case=1 AND task_id NOT IN (SELECT task_id FROM deleted_tasks)");
     check(sqlite3_step(query.value),db_);return static_cast<uint64_t>(sqlite3_column_int64(query.value,0));
 }
 
@@ -251,6 +289,7 @@ std::vector<TaskGroupSnapshot> StateStore::taskGroups(const std::string& target,
     {
         std::lock_guard<std::mutex> lock(mutex_);
         std::string sql="SELECT COALESCE(t.batch_id,''),CASE WHEN t.batch_id IS NULL THEN t.task_id ELSE 0 END,MAX(t.task_id),MIN(t.created_at_ms),t.status,q.outcome,COUNT(*) FROM tasks t JOIN task_query_index q ON q.task_id=t.task_id WHERE 1=1";
+        sql+=" AND t.task_id NOT IN (SELECT task_id FROM deleted_tasks)";
         if(!target.empty())sql+=" AND t.target=?";if(!revision.empty())sql+=" AND t.revision=?";if(!batch_id.empty())sql+=" AND t.batch_id=?";
         sql+=" GROUP BY t.batch_id,CASE WHEN t.batch_id IS NULL THEN t.task_id ELSE 0 END,t.status,q.outcome";
         Statement query(db_,sql.c_str());int p=1;

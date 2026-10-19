@@ -41,10 +41,9 @@ def identity_lock_path(output, worker_id):
 
 
 class SlotManager:
-    def __init__(self, config, demo=False, demo_seconds=3):
+    def __init__(self, config):
         self.machine, self.desired, self.output_root = slot_settings(config)
         self.slots_root = Path(config.get('worker.slots_root') or './worker/workers_slots').expanduser().resolve()
-        self.demo, self.demo_seconds = demo, demo_seconds
         self.machine_root = self.output_root / self.machine
         self.machine_root.mkdir(parents=True, exist_ok=True)
         fd = os.open(str(self.machine_root / '.manager.lock'),
@@ -119,8 +118,6 @@ class SlotManager:
         args = [sys.executable, '-B', '-u', str(Path(__file__).with_name('gcrp_worker.py')),
                 '--worker-id', self.worker_id(slot), '--machine-id', self.machine,
                 '--slot-id', slot, '--output', str(output)]
-        if self.demo:
-            args.extend(['--demo', '--demo-seconds', str(self.demo_seconds)])
         process = subprocess.Popen(args, close_fds=True)
         self.children[slot] = (process, time.monotonic())
         print('[MANAGER] started {} pid={}'.format(slot, process.pid), flush=True)
@@ -186,13 +183,9 @@ class SlotManager:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--demo', action='store_true')
-    parser.add_argument('--demo-seconds', type=float, default=3)
     parser.add_argument('--migration-preview', action='store_true',
                         help='show legacy SVN copies that would be reused, then exit')
     args = parser.parse_args()
-    if not 0 <= args.demo_seconds <= 3600:
-        parser.error('invalid demo duration')
     try:
         config = load_config("worker")
         if args.migration_preview:
@@ -200,7 +193,7 @@ def main():
             root = Path(config.get('worker.slots_root') or './worker/workers_slots').expanduser().resolve()
             migrate_legacy_slots(root, output, machine, slots, preview=True)
             return 0
-        manager = SlotManager(config, args.demo, args.demo_seconds)
+        manager = SlotManager(config)
     except (OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
 

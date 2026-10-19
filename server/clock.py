@@ -14,6 +14,7 @@ import re
 import socket
 import struct
 import sys
+import sqlite3
 import tempfile
 import time
 import uuid
@@ -385,7 +386,7 @@ def main():
         with daily_log(config):
             try:
                 return run(config, args.dry_run, args.check_only, args.interval)
-            except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
+            except (OSError, ValueError, RuntimeError, KeyError, TypeError, sqlite3.Error) as error:
                 print("[CLOCK] " + str(error), file=sys.stderr)
                 return 1
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:

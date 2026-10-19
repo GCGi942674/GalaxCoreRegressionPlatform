@@ -14,12 +14,13 @@ QWidget* MainWindow::workersPage() {
     hostTitle_=new QLabel;hostTitle_->setObjectName("sectionTitle");hostTitle_->setTextFormat(Qt::PlainText);rightBox->addWidget(hostTitle_);
     auto toolbar=new QHBoxLayout;
     for(const auto& operation:QList<QPair<QString,QString>>{
-            {QStringLiteral("恢复 ONLINE 接单"),"resume"},{QStringLiteral("全部停止接单"),"pause"},{QStringLiteral("更新 SVN"),"update"}}){
-        auto button=new QPushButton(operation.first);hostControlButtons_.append(button);toolbar->addWidget(button);
+            {QStringLiteral("全部上线"),"resume"},{QStringLiteral("全部下线"),"pause"},{QStringLiteral("更新"),"update"}}){
+        auto button=new QPushButton(operation.first);button->setMinimumWidth(112);hostControlButtons_.append(button);toolbar->addWidget(button);
         connect(button,&QPushButton::clicked,this,[this,action=operation.second]{controlWorkers(true,machines_->currentText(),action);});
     }toolbar->addStretch();rightBox->addLayout(toolbar);
     slotsTable_=table({QStringLiteral("Slot / Worker ID"),QStringLiteral("通信状态"),QStringLiteral("接单状态 / 维护"),QStringLiteral("当前执行"),QStringLiteral("操作")});
     slotsTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);slotsTable_->horizontalHeader()->setSectionResizeMode(3,QHeaderView::Stretch);slotsTable_->verticalHeader()->setDefaultSectionSize(76);rightBox->addWidget(slotsTable_,1);
+    slotsTable_->setObjectName("workerSlots");slotsTable_->horizontalHeader()->setSectionResizeMode(4,QHeaderView::Fixed);slotsTable_->setColumnWidth(4,260);
     auto hint=new QLabel(QStringLiteral("操作语义　下线＝停止接新任务；运行中的 testcase 正常结束。SVN 更新等待执行和结果上报结束后进行。离线主机需先启动 Worker，不能在此远程开机。"));
     hint->setWordWrap(true);hint->setObjectName("notice");rightBox->addWidget(hint);
     workerSummary_=new QLabel;workerSummary_->setWordWrap(true);workerSummary_->setObjectName("muted");rightBox->addWidget(workerSummary_);
@@ -73,7 +74,7 @@ QWidget* MainWindow::addPage() {
     auto source=new QLabel(QStringLiteral("Server 管理的 test2 目录 · 自动递归查找 run.tcl"));source->setObjectName("muted");treeLayout->addWidget(source);
     auto searchRow=new QHBoxLayout;caseSearch_=new QLineEdit;caseSearch_->setClearButtonEnabled(true);caseSearch_->setPlaceholderText(QStringLiteral("搜索例子名称 / 目录"));
     auto selectVisible=new QPushButton(QStringLiteral("全选筛选结果"));searchRow->addWidget(caseSearch_,1);searchRow->addWidget(selectVisible);treeLayout->addLayout(searchRow);
-    casesTree_=new QTreeWidget;casesTree_->setHeaderHidden(true);casesTree_->setMouseTracking(true);casesTree_->setIndentation(22);treeLayout->addWidget(casesTree_,1);
+    casesTree_=new QTreeWidget;casesTree_->setObjectName("testcaseSelection");casesTree_->setHeaderHidden(true);casesTree_->setMouseTracking(true);casesTree_->setIndentation(22);treeLayout->addWidget(casesTree_,1);
     auto strip=new QHBoxLayout;selection_=new QLabel(QStringLiteral("已选择 0 个 testcase"));strip->addWidget(selection_,1);auto clear=new QPushButton(QStringLiteral("清空"));strip->addWidget(clear);treeLayout->addLayout(strip);
     connect(caseSearch_,&QLineEdit::textChanged,this,[this]{filterCases();});
     connect(clear,&QPushButton::clicked,this,[this]{for(QTreeWidgetItemIterator it(casesTree_);*it;++it)if(!(*it)->data(0,Qt::UserRole).toString().isEmpty())(*it)->setCheckState(0,Qt::Unchecked);});
@@ -83,8 +84,12 @@ QWidget* MainWindow::addPage() {
     auto title=new QLabel(QStringLiteral("批次设置"));title->setObjectName("sectionTitle");formBox->addWidget(title);
     auto intro=new QLabel(QStringLiteral("配置提交时生成快照，不影响其他人的批次。"));intro->setObjectName("muted");intro->setWordWrap(true);formBox->addWidget(intro);
     auto field=[formBox](const QString& label,QWidget* input){auto caption=new QLabel(label);caption->setObjectName("fieldLabel");formBox->addWidget(caption);formBox->addWidget(input);};
-    batchName_=new QLineEdit(QStringLiteral("人工验证 · Route"));revision_=new QComboBox;flow_=new QComboBox;
-    field(QStringLiteral("批次名称"),batchName_);field(QStringLiteral("GalaxCore ZIP 版本"),revision_);
+    target_=new QLineEdit(settings_.target);target_->setObjectName("businessTarget");target_->setPlaceholderText(QStringLiteral("填写本次验证的业务目标"));
+    field(QStringLiteral("业务目标（必填）"),target_);
+    batchName_=new QLineEdit;batchName_->setObjectName("manualBatchName");batchName_->setReadOnly(true);batchName_->setPlaceholderText(QStringLiteral("选择执行模板后自动生成"));
+    batchName_->setToolTip(QStringLiteral("名称自动使用“人工验证 + 模板名”；同名批次仍有独立的唯一标识，不会合并。"));
+    revision_=new QComboBox;revision_->setObjectName("artifactRevision");flow_=new QComboBox;flow_->setObjectName("executionTemplate");
+    field(QStringLiteral("批次名称（自动生成）"),batchName_);field(QStringLiteral("GalaxCore ZIP 版本"),revision_);
     auto versionsHint=new QLabel(QStringLiteral("最近 50 个成功版本 + 每日回归受保护版本，以 Server 清单为准"));versionsHint->setWordWrap(true);versionsHint->setObjectName("muted");formBox->addWidget(versionsHint);
     field(QStringLiteral("执行模板"),flow_);
     auto flowRow=new QHBoxLayout;flowSummary_=new QLabel;flowSummary_->setWordWrap(true);auto configureFlow=new QPushButton(QStringLiteral("配置阶段"));flowRow->addWidget(flowSummary_,1);flowRow->addWidget(configureFlow);formBox->addLayout(flowRow);
@@ -111,10 +116,10 @@ QWidget* MainWindow::addPage() {
     });
     connect(flow_,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this]{resetFlowOptions();});
     auto advancedToggle=new QPushButton(QStringLiteral("▸ 高级设置"));advancedToggle->setCheckable(true);advancedToggle->setProperty("kind","quiet");formBox->addWidget(advancedToggle);
-    auto advanced=new QWidget;auto advancedBox=new QFormLayout(advanced);advancedBox->setContentsMargins(0,0,0,0);
-    target_=new QLineEdit(settings_.target);priority_=new QSpinBox;priority_->setRange(-100,100);timeout_=new QSpinBox;timeout_->setRange(1,86400);timeout_->setValue(5400);
-    advancedBox->addRow(QStringLiteral("业务目标（必填）"),target_);advancedBox->addRow(QStringLiteral("优先级"),priority_);advancedBox->addRow(QStringLiteral("单例超时 / 秒"),timeout_);formBox->addWidget(advanced);
-    const bool expanded=settings_.target.trimmed().isEmpty()&&!demo_;advanced->setVisible(expanded);advancedToggle->setChecked(expanded);advancedToggle->setText(expanded?QStringLiteral("▾ 高级设置"):QStringLiteral("▸ 高级设置"));
+    auto advanced=new QWidget;advanced->setObjectName("advancedSettings");auto advancedBox=new QFormLayout(advanced);advancedBox->setContentsMargins(0,0,0,0);
+    priority_=new QSpinBox;priority_->setRange(-100,100);timeout_=new QSpinBox;timeout_->setRange(1,86400);timeout_->setValue(5400);
+    advancedBox->addRow(QStringLiteral("优先级"),priority_);advancedBox->addRow(QStringLiteral("单例超时 / 秒"),timeout_);formBox->addWidget(advanced);
+    advanced->hide();
     connect(advancedToggle,&QPushButton::toggled,advanced,[advanced,advancedToggle](bool visible){advanced->setVisible(visible);advancedToggle->setText(visible?QStringLiteral("▾ 高级设置"):QStringLiteral("▸ 高级设置"));});
     auto hint=new QLabel(QStringLiteral("每次提交生成独立批次并加入队列。同优先级按服务端接收顺序调度，不锁住其他用户的界面。"));hint->setWordWrap(true);hint->setObjectName("notice");formBox->addWidget(hint);
     auto reload=new QPushButton(QStringLiteral("从 Server 刷新目录 / ZIP / 模板"));formBox->addWidget(reload);
@@ -131,7 +136,7 @@ QWidget* MainWindow::addPage() {
         }catch(const std::exception& error){QMessageBox::warning(this,QStringLiteral("测试案例列表导入失败"),QString::fromUtf8(error.what())+QStringLiteral("\n原有勾选保持不变。"));}
     });
     catalogStatus_=new QLabel(QStringLiteral("等待 Server 目录，无需在 GUI 主机部署 test2 或 ZIP。"));catalogStatus_->setWordWrap(true);catalogStatus_->setTextFormat(Qt::PlainText);catalogStatus_->setObjectName("muted");formBox->addWidget(catalogStatus_);
-    formBox->addStretch();submit_=new QPushButton(QStringLiteral("预览并提交"));submit_->setProperty("kind","primary");submit_->setEnabled(demo_);
+    formBox->addStretch();submit_=new QPushButton(QStringLiteral("预览并提交"));submit_->setObjectName("submitManualBatch");submit_->setProperty("kind","primary");submit_->setEnabled(demo_);
     connect(submit_,&QPushButton::clicked,this,[this]{submitBatch();});connect(casesTree_,&QTreeWidget::itemChanged,this,[this]{selection_->setText(QStringLiteral("已选择 %1 个 testcase").arg(selectedCases(casesTree_).size()));});
     auto formScroll=new QScrollArea;formScroll->setFrameShape(QFrame::NoFrame);formScroll->setWidgetResizable(true);formScroll->setWidget(formContent);formScroll->setMinimumWidth(340);
     auto right=new QWidget;auto rightBox=new QVBoxLayout(right);rightBox->setContentsMargins(0,0,0,0);rightBox->addWidget(formScroll,1);auto footer=new QHBoxLayout;footer->setContentsMargins(16,10,16,10);footer->addWidget(submit_);rightBox->addLayout(footer);
@@ -168,5 +173,5 @@ QWidget* MainWindow::regressionPage() {
     connect(regressionNext_,&QPushButton::clicked,this,[this]{queryDaily(true);});
     auto hint=new QLabel(demo_?QStringLiteral("演示数据：PASS→FAIL 为新回退；TIMEOUT 和缺失结果另外展示。"):
         QStringLiteral("只统计带 scheduled 来源和日期的定时任务；人工 / 未分类历史记录排除。重复记录按同日同阶段同 case 的最新 task_id 展示，每页 50 条。"));
-    hint->setWordWrap(true);layout->addWidget(hint);connect(compare,&QPushButton::clicked,this,[this]{if(demo_)compareDemoDates();else queryDaily();});if(demo_)compareDemoDates();return widget;
+    hint->setWordWrap(true);layout->addWidget(hint);connect(compare,&QPushButton::clicked,this,[this]{queryDaily();});return widget;
 }

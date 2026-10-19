@@ -210,7 +210,7 @@ std::optional<TaskId> Scheduler::submitTask(Task task, const std::string& submis
     }
 
     const auto batch = batchId(task);
-    if (batch && stopped_batches_.count(*batch)) return std::nullopt;
+    if (batch && (stopped_batches_.count(*batch)||(store_&&store_->batchDeleted(*batch)))) return std::nullopt;
 
     if(store_){
         if(!store_->loadTasks(task.getId()).empty())return std::nullopt;
@@ -476,6 +476,7 @@ bool Scheduler::cancelTask(TaskId task_id) {
 
 std::optional<BatchSnapshot> Scheduler::queryBatch(const std::string& batch_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
+    if(store_&&store_->batchDeleted(batch_id))return std::nullopt;
     BatchSnapshot snapshot;
     snapshot.stop_requested = stopped_batches_.count(batch_id) != 0;
     if(store_){for(const auto& row:store_->loadTasks(0,false,batch_id))countStatus(snapshot,row.task.getStatus());return snapshot.total||store_->hasBatch(batch_id)?std::make_optional(snapshot):std::nullopt;}
@@ -487,6 +488,31 @@ std::optional<BatchSnapshot> Scheduler::queryBatch(const std::string& batch_id) 
         if(!planned)return std::nullopt;
     }
     return snapshot;
+}
+
+size_t Scheduler::deleteRecords(TaskId id,const std::string& batch_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(!store_)throw std::logic_error("record deletion requires durable SQLite storage");
+    // The scheduler lock serializes deletion with submit, assignment and results.
+    const auto count=store_->deleteRecords(id,batch_id);
+    for(auto it=tasks_.begin();it!=tasks_.end();){
+        const auto batch=batchId(it->second);
+        if(id?it->first==id:batch&&*batch==batch_id)it=tasks_.erase(it);else ++it;
+    }
+    // Durable stop state also prevents late Clock submissions from resurrecting a batch.
+    if(!batch_id.empty())stopped_batches_.insert(batch_id);
+    if(count)++task_generation_;
+    return count;
+}
+
+bool Scheduler::isBatchDeleted(const std::string& batch_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return store_&&store_->batchDeleted(batch_id);
+}
+
+size_t Scheduler::deletedCount(const std::string& batch_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return store_?store_->deletedCount(batch_id):0;
 }
 
 std::optional<BatchSnapshot> Scheduler::cancelBatch(const std::string& batch_id) {
@@ -540,12 +566,12 @@ bool Scheduler::isBatchStopped(const std::string& batch_id) const {
     return stopped_batches_.count(batch_id) != 0;
 }
 
-std::optional<Task> Scheduler::getTask(TaskId id) const {
+std::optional<Task> Scheduler::getTask(TaskId id,bool include_deleted) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = tasks_.find(id);
     if (it == tasks_.end()) {
-        if(store_){auto rows=store_->loadTasks(id);if(!rows.empty())return std::move(rows.front().task);}
+        if(store_){auto rows=store_->loadTasks(id,false,"",include_deleted);if(!rows.empty())return std::move(rows.front().task);}
         return std::nullopt;
     }
 

@@ -1,40 +1,23 @@
-# Build directories
-build/
-cmake-build-*/
-out/
-CMakeFiles/
-bin/
-reference/
-/tmp
-__pycache__/
-*.pyc
-workers_slots/
-/worker-output/
+# Build products and machine-local runtime state are never part of a release.
+/build/
 /data/
-
-# Private deployment settings and runtime database files
-/config/server.conf
-/config/worker.conf
-/database/*
-!/database/README.md
-
-# Object files & binaries
-*.cmake
-CMakeCache.txt
-*.zip
-*.o
-*.a
-*.so
-*.txt
-!CMakeLists.txt
-!**/CMakeLists.txt
-logs/
 /intranet-report/
-client_app
-server_app
-
-
-# IDE
-.vscode/
-.idea/
-*.swp
+__pycache__/
+*.py[cod]
+*.db
+*.db-wal
+*.db-shm
+*.lock
+/database/*
+!/database/.gitkeep
+/worker-output/*
+!/worker-output/.gitkeep
+/worker/workers_slots/*
+!/worker/workers_slots/.gitkeep
+/logs/**
+!/logs/server/
+!/logs/server/.gitkeep
+!/logs/workers/
+!/logs/workers/.gitkeep
+!/logs/daily/
+!/logs/daily/.gitkeep

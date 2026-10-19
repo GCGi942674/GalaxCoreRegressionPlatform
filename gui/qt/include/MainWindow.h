@@ -26,14 +26,11 @@ struct GuiSettings {
 };
 class MainWindow : public QMainWindow {
 public:
-    MainWindow(GuiSettings settings, bool demo);
-    bool selfTest();
-    bool catalogProbe() const;
-    bool snapshotProbe() const;
-    bool saveReview(const QString& directory);
+    explicit MainWindow(GuiSettings settings);
 private:
     GuiSettings settings_;
-    bool demo_{false}, loading_{false}, submitting_{false};
+    const bool demo_{false};
+    bool loading_{false}, submitting_{false};
     RpcClient rpc_;
     Json workers_ = Json::array(), tasks_ = Json::array(), catalog_;
     QSet<QString> operations_;
@@ -114,7 +111,6 @@ private:
     void loadRerun(std::shared_ptr<Json> ids,size_t index);
     void showDailyPlan();
     void openLogs(const Json& task);
-    void compareDemoDates();
     void queryDaily(bool next=false);
     void note(const QString& text, bool error = false);
     void updateFreshness();

@@ -24,7 +24,7 @@ void MainWindow::showDailyPlan() {
                     }
                     const QMap<QString,QString> labels{{"NOT_SUBMITTED",QStringLiteral("未提交")},{"PARTIALLY_SUBMITTED",QStringLiteral("部分提交 / 请检查 Clock")},
                         {"RUNNING",QStringLiteral("执行中")},{"COMPLETE",QStringLiteral("执行完成")},{"COUNT_MISMATCH",QStringLiteral("数量异常")},
-                        {"STOPPED",QStringLiteral("已停止后续")},{"STOPPING",QStringLiteral("停止中 · 等待在途完成")}};
+                        {"STOPPED",QStringLiteral("已停止后续")},{"STOPPING",QStringLiteral("停止中 · 等待在途完成")},{"DELETED",QStringLiteral("任务记录已删除")},{"PARTIALLY_DELETED",QStringLiteral("部分案例记录已删除")}};
                     for(const auto& item:r.result.at("items")){
                         const int row=rows->rowCount();rows->insertRow(row);
                         cell(rows,row,0,text(item,"name"));rows->item(row,0)->setToolTip(text(item,"batch_id"));

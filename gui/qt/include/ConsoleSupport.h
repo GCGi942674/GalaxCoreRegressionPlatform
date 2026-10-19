@@ -95,14 +95,4 @@ QPushButton* pendingButton(const QString& label) {
     button->setToolTip(QStringLiteral("当前 Server 没有对应 Client API"));
     return button;
 }
-Json exampleCatalog() {
-    Json result = {{"cases",{"kintexuplus/xcku3p-ffvd900-1-i/convergentRoundingEven/run.tcl",
-                      "kintexuplus/xcku3p-ffvd900-1-i/shiftRegister/run.tcl",
-                      "virtexuplus/xcvu9p-flga2104-2-i/fifoSync/run.tcl"}},
-                  {"revisions",{"19008","18962","18954"}}};
-    result["templates"]["route"]["flow_config"] = {{"route_design",1},{"write_bitstream",1},
-                                                  {"bit_cmp",1},{"msk_cmp",1},{"bgn_cmp",1}};
-    for(int i=1;i<=117;++i)result["cases"].push_back(QStringLiteral("kintexuplus/xcku3p-ffvd900-1-i/demo_case_%1/run.tcl").arg(i,3,10,QChar('0')).toStdString());
-    return result;
-}
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Single-slot Linux demo executor. Never executes commands from task metadata."""
+"""Single-slot PJtest executor. Never executes commands from task metadata."""
 import argparse
 import fcntl
 import hashlib
@@ -449,8 +449,8 @@ class Worker:
                 or not isinstance(data.get("revision"), str)):
             raise RuntimeError("unexpected or excess assignment")
         self.assigned = data
-        if not self.adapter and data.get("payload"):
-            raise RuntimeError("demo Worker refuses business regression payload")
+        if not self.adapter:
+            raise RuntimeError("PJtest adapter is not ready")
 
     def request(self, kind, data):
         try:
@@ -535,19 +535,7 @@ class Worker:
                 # Fail closed: no terminal report/released slot on cleanup failure.
                 raise RuntimeError("PJtest cleanup failed; Worker quarantined; inspect local result.json")
         else:
-            directory.mkdir()
-            with (directory / "stdout.log").open("xb") as out, (directory / "stderr.log").open("xb") as err:
-                script = ("import sys,time; print('demo stdout',flush=True); "
-                          "print('demo stderr',file=sys.stderr,flush=True); "
-                          "time.sleep(float(sys.argv[1])); sys.exit(int(sys.argv[2]))")
-                pid, code, timed_out = self.executor.run(
-                    [sys.executable, "-u", "-c", script, str(self.args.demo_seconds),
-                     str(self.args.demo_exit_code)], directory, os.environ.copy(), out, err,
-                    self.args.task_timeout, grace=0,
-                    on_start=lambda child_pid: (directory / "pid").write_text(str(child_pid) + "\n"))
-            result = dict(task_id=task_id, pid=pid, exit_code=(-signal.SIGKILL if timed_out else code),
-                          status=("TIMEOUT" if timed_out else "SUCCEEDED" if code == 0 else "FAILED"))
-            (directory / "result.json").write_text(json.dumps(result) + "\n")
+            raise RuntimeError("PJtest adapter is not ready")
         status = result["status"]
         self.acknowledge_drain()
         report = dict(task_id=task_id, worker_id=self.args.worker_id,
@@ -641,12 +629,9 @@ def main():
     parser.add_argument("--machine-id", help="stable host identity for multi-slot manager")
     parser.add_argument("--slot-id", help="stable slot identity on this host")
     parser.add_argument("--output", type=Path, help="override worker.output_dir")
-    parser.add_argument("--demo-seconds", type=float, default=3)
-    parser.add_argument("--demo-exit-code", type=int, default=0)
     parser.add_argument("--task-timeout", type=float, default=30)
     parser.add_argument("--pjtest-config", type=Path,
                         help="enable single-case PJtest mode using this local JSON config")
-    parser.add_argument("--demo", action="store_true", help="explicitly enable non-business demo mode")
     args = parser.parse_args()
     try:
         config = load_config("worker")
@@ -667,7 +652,7 @@ def main():
         if not 1 <= args.retention_days <= 3650:
             raise ValueError("log.retention_days must be between 1 and 3650")
         explicit_config = args.pjtest_config is not None
-        if not explicit_config and not args.demo:
+        if not explicit_config:
             args.pjtest_config = shared_pjtest_settings(config, args.worker_id, args.output)
         args.pjtest_paths = {}
         if explicit_config:
@@ -682,13 +667,11 @@ def main():
             args.pjtest_paths["log_root"] = str(args.output)
     except (OSError, ValueError, KeyError) as error:
         parser.error("invalid shared config: " + str(error))
-    if bool(args.pjtest_config) == args.demo:
-        parser.error("choose exactly one of --pjtest-config or --demo")
+    if not args.pjtest_config:
+        parser.error("configure worker.artifact_root and worker.svn_url, or provide --pjtest-config")
     if (not 1 <= args.port <= 65535 or not 1 <= len(args.worker_id.encode()) <= 256
-            or not math.isfinite(args.demo_seconds) or args.demo_seconds < 0
-            or not math.isfinite(args.task_timeout) or args.task_timeout <= 0
-            or not 0 <= args.demo_exit_code <= 255):
-        parser.error("invalid port, worker identity, duration or exit code")
+            or not math.isfinite(args.task_timeout) or args.task_timeout <= 0):
+        parser.error("invalid port, worker identity or duration")
     def terminate(signum, frame):
         raise KeyboardInterrupt()
     signal.signal(signal.SIGTERM, terminate)

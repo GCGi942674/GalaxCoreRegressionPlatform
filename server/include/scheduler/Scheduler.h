@@ -52,6 +52,9 @@ public:
     bool completeTask(TaskId task_id, TaskStatus final_status,
                       nlohmann::json execution_summary = nullptr);
     bool cancelTask(TaskId task_id);
+    size_t deleteRecords(TaskId id, const std::string& batch_id);
+    bool isBatchDeleted(const std::string& batch_id) const;
+    size_t deletedCount(const std::string& batch_id) const;
     std::optional<BatchSnapshot> queryBatch(const std::string& batch_id) const;
     std::optional<BatchSnapshot> cancelBatch(const std::string& batch_id);
     bool isBatchStopped(const std::string& batch_id) const;
@@ -62,7 +65,7 @@ public:
     // Cancellation/rollback returns false while the dispatcher is in flight.
     std::optional<bool> dispatchAssignment(const TaskAssignment&, WorkerDispatcher&);
 
-    std::optional<Task> getTask(TaskId id) const;
+    std::optional<Task> getTask(TaskId id, bool include_deleted = false) const;
     // Resolve a completed current or persisted historical run to its Worker.
     std::optional<WorkerId> archiveOwner(TaskId id, const std::string& run_id) const;
     std::vector<Task> getTasks() const;
