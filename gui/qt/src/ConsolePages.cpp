@@ -2,7 +2,7 @@
 #include "CaseListImport.h"
 
 QWidget* MainWindow::workersPage() {
-    auto widget=page(QStringLiteral("工作机状态"),QStringLiteral("按物理服务器管理子 slot；停止接单不会中断运行中的 testcase。"));
+    auto widget=page(QStringLiteral("工作机状态"),QStringLiteral("按物理服务器管理子 slot；下线后不再派发新任务，正在执行的 testcase 正常完成。"));
     auto layout=qobject_cast<QVBoxLayout*>(widget->layout());machines_=new QComboBox(widget);machines_->hide();
     auto split=new QSplitter;auto left=new QWidget;auto leftBox=new QVBoxLayout(left);leftBox->setContentsMargins(4,8,4,8);
     auto heading=new QLabel(QStringLiteral("工作服务器"));heading->setObjectName("sectionTitle");leftBox->addWidget(heading);
@@ -14,14 +14,18 @@ QWidget* MainWindow::workersPage() {
     hostTitle_=new QLabel;hostTitle_->setObjectName("sectionTitle");hostTitle_->setTextFormat(Qt::PlainText);rightBox->addWidget(hostTitle_);
     auto toolbar=new QHBoxLayout;
     for(const auto& operation:QList<QPair<QString,QString>>{
-            {QStringLiteral("全部上线"),"resume"},{QStringLiteral("全部下线"),"pause"},{QStringLiteral("更新"),"update"}}){
+            {QStringLiteral("全部上线"),"resume"},{QStringLiteral("全部下线"),"pause"},{QStringLiteral("更新全部SVN"),"update"}}){
         auto button=new QPushButton(operation.first);button->setMinimumWidth(112);hostControlButtons_.append(button);toolbar->addWidget(button);
         connect(button,&QPushButton::clicked,this,[this,action=operation.second]{controlWorkers(true,machines_->currentText(),action);});
-    }toolbar->addStretch();rightBox->addLayout(toolbar);
-    slotsTable_=table({QStringLiteral("Slot / Worker ID"),QStringLiteral("通信状态"),QStringLiteral("接单状态 / 维护"),QStringLiteral("当前执行"),QStringLiteral("操作")});
+    }
+    hostRecoveryButton_=new QPushButton(QStringLiteral("整机故障恢复…"));hostRecoveryButton_->setObjectName("hostRecoveryButton");
+    hostRecoveryButton_->setMinimumWidth(140);toolbar->addSpacing(16);toolbar->addWidget(hostRecoveryButton_);
+    connect(hostRecoveryButton_,&QPushButton::clicked,this,[this]{recoverOfflineWorkers(true,machines_->currentText());});
+    toolbar->addStretch();rightBox->addLayout(toolbar);
+    slotsTable_=table({QStringLiteral("Slot / Worker ID"),QStringLiteral("工作状态"),QStringLiteral("连接 / 调度 / 维护"),QStringLiteral("当前 testcase"),QStringLiteral("操作")});
     slotsTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);slotsTable_->horizontalHeader()->setSectionResizeMode(3,QHeaderView::Stretch);slotsTable_->verticalHeader()->setDefaultSectionSize(76);rightBox->addWidget(slotsTable_,1);
     slotsTable_->setObjectName("workerSlots");slotsTable_->horizontalHeader()->setSectionResizeMode(4,QHeaderView::Fixed);slotsTable_->setColumnWidth(4,260);
-    auto hint=new QLabel(QStringLiteral("操作语义　下线＝停止接新任务；运行中的 testcase 正常结束。SVN 更新等待执行和结果上报结束后进行。离线主机需先启动 Worker，不能在此远程开机。"));
+    auto hint=new QLabel(QStringLiteral("工作状态 OFFLINE 表示该 slot 不参与调度；连接状态单独显示真实心跳。下线中的 testcase 正常完成后转为已下线。通信失联时，保留的任务只代表最后已知状态，不代表进程已经停止。"));
     hint->setWordWrap(true);hint->setObjectName("notice");rightBox->addWidget(hint);
     workerSummary_=new QLabel;workerSummary_->setWordWrap(true);workerSummary_->setObjectName("muted");rightBox->addWidget(workerSummary_);
     split->addWidget(GcrpUi::card(right));split->setSizes({230,900});split->setStretchFactor(1,1);layout->addWidget(split,1);

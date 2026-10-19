@@ -99,7 +99,7 @@ inline Json tasks(const Json& q, const Scheduler& scheduler) {
         {"next_before_task_id", more ? items.back()["task_id"] : Json(nullptr)},
         {"snapshot_generation", snapshot.first}};
 }
-inline Json workers(const Json& q, const WorkerManager& manager) {
+inline Json workers(const Json& q, const WorkerManager& manager, const Scheduler* scheduler=nullptr) {
     validate(q, {"machine_id", "status", "limit", "after"});
     const auto count = limit(q);
     const auto machine = text(q, "machine_id", 256), status = text(q, "status", 16);
@@ -113,8 +113,10 @@ inline Json workers(const Json& q, const WorkerManager& manager) {
         if (a.size() != 3) throw std::invalid_argument("incomplete cursor");
         after = {text(a, "machine_id", 256), text(a, "slot_id", 256), text(a, "worker_id", 256)};
     }
-    auto snapshot = manager.snapshot();
-    auto& rows = snapshot.second;
+    WorkerInventorySnapshot snapshot;
+    if(scheduler)snapshot=scheduler->workerInventory();
+    else {auto workers=manager.snapshot();snapshot.worker_generation=workers.first;snapshot.workers=std::move(workers.second);}
+    auto& rows = snapshot.workers;
     auto key = [](const Worker& w) { return Key{w.getMachineId(), w.getSlotId(), w.getId()}; };
     std::sort(rows.begin(), rows.end(), [&](const Worker& a, const Worker& b) { return key(a) < key(b); });
     Json items = Json::array(); size_t total = 0; bool more = false;
@@ -133,7 +135,15 @@ inline Json workers(const Json& q, const WorkerManager& manager) {
             {"maintenance",{{"operation_id",w.getControl().operation_id},{"scope",w.getControl().scope},
                 {"state",w.getControl().state},{"error",w.getControl().error}}},
             {"last_heartbeat_ms", std::chrono::duration_cast<std::chrono::milliseconds>(
-                w.getLastHeartbeat().time_since_epoch()).count()}});
+                w.getLastHeartbeat().time_since_epoch()).count()},
+            {"registration_observed",w.getLastHeartbeat().time_since_epoch().count()!=0}});
+        if(scheduler){
+            const auto active=snapshot.active_tasks.find(w.getId());
+            items.back()["current_tasks"]=active==snapshot.active_tasks.end()?Json::array():(*active)["items"];
+            const auto total=active==snapshot.active_tasks.end()?uint64_t(0):(*active)["total"].get<uint64_t>();
+            items.back()["current_tasks_total"]=total;
+            items.back()["current_tasks_truncated"]=total>items.back()["current_tasks"].size();
+        }
     }
     Json cursor = nullptr;
     if (more) {
@@ -141,8 +151,9 @@ inline Json workers(const Json& q, const WorkerManager& manager) {
         cursor = {{"machine_id", w["machine_id"]}, {"slot_id", w["slot_id"]}, {"worker_id", w["worker_id"]}};
     }
     return {{"items", items}, {"total", total}, {"has_more", more}, {"next_after", cursor},
-        {"snapshot_generation", snapshot.first},
-        {"inventory_scope", "current_server_process"}};
+        {"snapshot_generation", snapshot.worker_generation+snapshot.task_generation},
+        {"task_generation",snapshot.task_generation},
+        {"inventory_scope", "current_server_process_and_unreconciled_tasks"}};
 }
 inline Json capabilities(const Json& q) {
     validate(q, {});
@@ -150,11 +161,12 @@ inline Json capabilities(const Json& q) {
         {"operations", {"submit_task", "query_task", "query_tasks", "query_workers", "query_status",
             "query_capabilities", "cancel_task", "query_batch", "cancel_batch", "query_regression",
             "query_progress", "query_rollback", "query_catalog", "query_logs", "read_log",
-            "publish_daily_plan", "query_daily_plan", "control_workers", "delete_task", "delete_batch"}},
+            "publish_daily_plan", "query_daily_plan", "control_workers", "recover_offline_workers", "delete_task", "delete_batch"}},
         {"limits", {{"page_size", 50}, {"progress_page_size", 20}, {"frame_bytes", 1048576},
             {"log_read_bytes",131072},{"log_file_bytes",1073741824}}},
         {"features", {{"remote_cancel", false}, {"cancel_queued", true},
-            {"worker_inventory_persistent", false}, {"authentication", false},
+            {"worker_inventory_persistent", false}, {"authentication", false}, {"worker_current_tasks_v1",true},
+            {"operator_confirmed_offline_recovery_v1",true},
             {"worker_controls_persistent",true}, {"worker_maintenance_v1",true},
             {"remote_worker_management",true}, {"administration_disabled",false},
             {"archive_sha256_receipts",true}, {"task_group_sql_index",true},

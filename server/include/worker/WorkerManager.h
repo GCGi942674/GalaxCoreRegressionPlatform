@@ -50,6 +50,9 @@ public:
     WorkerManager& operator=(const WorkerManager&) = delete;
 
 private:
+    // Recovery holds Scheduler then WorkerManager locks, including the durable
+    // decision, so registration/heartbeats cannot race the OFFLINE check.
+    friend class Scheduler;
     mutable std::mutex mutex_;
     uint64_t generation_{0};
     std::unordered_map<WorkerId, std::unique_ptr<Worker>> workers_;
@@ -57,6 +60,7 @@ private:
     nlohmann::json controls_;
     std::shared_ptr<const WorkerControl> controlFor(const nlohmann::json&, const WorkerId&, const std::string&) const;
     void commitControls(nlohmann::json next);
+    bool releaseSlotLocked(const WorkerId& worker_id); // caller holds mutex_
 };
 
 } // namespace GCRP

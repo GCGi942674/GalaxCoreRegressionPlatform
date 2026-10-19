@@ -58,8 +58,10 @@ void Scheduler::releaseRecoveryHold(const WorkerId& worker_id) {
 }
 
 // Caller holds mutex_. A lost attempt is retried only after the Worker proves
-// its execution tree is gone, or if START permission was never committed.
-std::string Scheduler::recoverLost(Task& task, int max_retries) {
+// its execution tree is gone, START permission was never committed, or an
+// operator explicitly confirms the old execution is stopped through recovery.
+std::string Scheduler::recoverLost(Task& task, int max_retries, bool release_slot,
+                                   const std::string& reason) {
     if (!store_ || task.getRunId().empty())
         throw std::runtime_error("durable recovery requires persistence");
     const auto worker_id = task.getWorkerId();
@@ -73,7 +75,7 @@ std::string Scheduler::recoverLost(Task& task, int max_retries) {
     Task prepared = task;
     prepared.restore(status, retry || stopped ? "" : worker_id,
                      task.getRetryCount() + (retry && running ? 1 : 0), task.getPayload(),
-                     {{"reason", "worker_lost"}}, retry ? next_sequence_ : task.getQueueSequence(),
+                     {{"reason", reason}}, retry ? next_sequence_ : task.getQueueSequence(),
                      task.getRunId(), false, task.getCreatedAt(), task.getStartedAt(),
                      retry ? std::chrono::system_clock::time_point{} : std::chrono::system_clock::now());
     if (retry) task_queue_.reserve(tasks_.size() + 1);
@@ -81,9 +83,91 @@ std::string Scheduler::recoverLost(Task& task, int max_retries) {
                  std::make_pair(worker_id, action));
     task = std::move(prepared);
     ++task_generation_;
-    if (!recovered) worker_manager_.releaseSlot(worker_id);
+    if (!recovered && release_slot) worker_manager_.releaseSlot(worker_id);
     if (retry) task_queue_.push({task.getId(), task.getPriority(), next_sequence_++});
     return action;
+}
+
+nlohmann::json Scheduler::recoverOfflineWorkers(bool machine, const std::string& target,
+        const nlohmann::json& expected_tasks, int max_retries) {
+    using Json = nlohmann::json;
+    if(target.empty() || max_retries<0 || max_retries>100 || !expected_tasks.is_array() ||
+       expected_tasks.empty() || expected_tasks.size()>256)
+        throw std::invalid_argument("recovery requires 1..256 exact task/run identities");
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> worker_lock(worker_manager_.mutex_);
+    if(!store_)throw std::logic_error("recovery requires durable persistence");
+    std::vector<TaskId> active;
+    std::unordered_set<TaskId> seen;
+    Json results=Json::array();
+    auto next_controls=worker_manager_.controls_;
+    for(const auto& row:expected_tasks) {
+        if(!row.is_object() || row.size()!=3 || !row.contains("task_id") ||
+           !row["task_id"].is_number_unsigned() || row["task_id"].get<TaskId>()==0 ||
+           !row.contains("run_id") || !row["run_id"].is_string() ||
+           row["run_id"].get<std::string>().empty() || row["run_id"].get<std::string>().size()>128 ||
+           !row.contains("worker_id") || !row["worker_id"].is_string())
+            throw std::invalid_argument("invalid recovery task/run identity");
+        const auto id=row["task_id"].get<TaskId>();
+        const auto owner=row["worker_id"].get<std::string>();
+        const auto run=row["run_id"].get<std::string>();
+        if(!seen.insert(id).second)throw std::invalid_argument("duplicate recovery task");
+        auto worker=worker_manager_.workers_.find(owner);
+        const bool unknown=worker==worker_manager_.workers_.end();
+        // Historical owners are displayed under their exact Worker ID, not a
+        // guessed hostname. Only a durable unreconciled assignment is eligible.
+        if(unknown?owner!=target:(machine?worker->second->getMachineId()!=target:owner!=target))
+            throw std::logic_error("Worker inventory changed; refresh before recovery");
+        // A retry of the exact old attempt is harmless, including after reassignment.
+        if(auto prior=store_->recoveryDecision(run,id,owner)) {
+            results.push_back({{"task_id",id},{"run_id",run},{"worker_id",owner},
+                {"action",*prior},{"already_processed",true}});
+            continue;
+        }
+        auto task=tasks_.find(id);
+        if((!unknown && worker->second->getStatus()!=WorkerStatus::OFFLINE) || task==tasks_.end() ||
+           (unknown && !task->second.recoveryRequired()) ||
+           task->second.getWorkerId()!=owner || task->second.getRunId()!=run ||
+           (task->second.getStatus()!=TaskStatus::RUNNING && task->second.getStatus()!=TaskStatus::ASSIGNED) ||
+           dispatching_.count(id))
+            throw std::logic_error("task changed, dispatch in progress or Worker is not OFFLINE; refresh");
+        // Persist stop-dispatch intent before making any execution eligible elsewhere.
+        // Reconnecting this slot never silently enables it again.
+        auto& control=next_controls["workers"][owner];
+        control={{"machine_id",unknown?std::string():worker->second->getMachineId()},{"accepting",false},
+            {"operation_id",""},{"scope",""},{"state","IDLE"},{"error",""}};
+        active.push_back(id);
+    }
+    for(const auto& entry:tasks_) {
+        const auto& task=entry.second;
+        if(task.getStatus()!=TaskStatus::ASSIGNED && task.getStatus()!=TaskStatus::RUNNING)continue;
+        auto worker=worker_manager_.workers_.find(task.getWorkerId());
+        const bool unknown=worker==worker_manager_.workers_.end();
+        if((unknown?task.recoveryRequired():worker->second->getStatus()==WorkerStatus::OFFLINE) &&
+           (unknown?task.getWorkerId()==target:(machine?worker->second->getMachineId()==target:worker->first==target)) && !seen.count(task.getId()))
+            throw std::logic_error("active task list changed or truncated; refresh before recovery");
+    }
+    if(!active.empty())worker_manager_.commitControls(std::move(next_controls));
+    // Each attempt has its own durable transaction and idempotent decision.
+    // If a later write fails, return explicit partial progress; retrying only
+    // the confirmed identities cannot touch a newer execution.
+    std::string error;
+    for(auto id:active) {
+        auto& task=tasks_.at(id);
+        const auto owner=task.getWorkerId(), run=task.getRunId();
+        const bool held=task.recoveryRequired();
+        try {
+            const auto action=recoverLost(task,max_retries,false,"operator_confirmed_worker_lost");
+            if(!held)worker_manager_.releaseSlotLocked(owner);
+            ++worker_manager_.generation_;
+            releaseRecoveryHold(owner);
+            reconciling_workers_.erase(owner);
+            results.push_back({{"task_id",id},{"run_id",run},{"worker_id",owner},
+                {"action",action},{"already_processed",false}});
+        }catch(const std::exception& e){error=e.what();break;}
+    }
+    return {{"items",results},{"complete",error.empty()},{"error",error},
+        {"worker_remains_paused",true},{"confirmation","operator_asserted_execution_stopped"}};
 }
 
 nlohmann::json Scheduler::recoverWorker(const WorkerId& worker_id, const std::string& state,
@@ -364,7 +448,8 @@ std::optional<bool> Scheduler::dispatchAssignment(
 
 
 bool Scheduler::completeTask(TaskId task_id, TaskStatus final_status,
-                             nlohmann::json execution_summary) {
+                             nlohmann::json execution_summary, const WorkerId& expected_worker,
+                             const std::string& expected_run) {
     if (!isValidFinalStatus(final_status)) {
         LOG_WARN(LogModule::SCHEDULER, "Invalid completion status: " + toString(final_status));
         return false;
@@ -379,6 +464,10 @@ bool Scheduler::completeTask(TaskId task_id, TaskStatus final_status,
     }
 
     Task& task = it->second;
+    // Validate ownership under the same lock as the state change: a preflight
+    // Router read must not let a late RESULT complete a replacement attempt.
+    if ((!expected_worker.empty() && task.getWorkerId()!=expected_worker) ||
+        (!expected_run.empty() && task.getRunId()!=expected_run))return false;
 
     if (task.getStatus() != TaskStatus::RUNNING) {
         LOG_WARN(LogModule::SCHEDULER, "Cannot complete task not in RUNNING state: " + std::to_string(task_id));
@@ -607,6 +696,46 @@ uint64_t Scheduler::taskGeneration() const {
     return task_generation_;
 }
 
+WorkerInventorySnapshot Scheduler::workerInventory() const {
+    // Same lock order as assignment/completion: Scheduler -> WorkerManager.
+    // Active assignments stay resident even when terminal history leaves the hot set.
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto workers=worker_manager_.snapshot();
+    WorkerInventorySnapshot result;result.worker_generation=workers.first;
+    result.task_generation=task_generation_;result.workers=std::move(workers.second);
+    for(const auto& entry:tasks_){
+        const auto& task=entry.second;const auto state=task.getStatus();
+        if((state!=TaskStatus::ASSIGNED&&state!=TaskStatus::RUNNING)||task.getWorkerId().empty())continue;
+        auto& group=result.active_tasks[task.getWorkerId()];
+        if(group.is_null())group={{"total",uint64_t(0)},{"items",nlohmann::json::array()}};
+        group["total"]=group["total"].get<uint64_t>()+1;
+        if(group["items"].size()>=8)continue; // Bound legacy multi-capacity Worker DTOs.
+        const auto& payload=task.getPayload();std::string path,flow;
+        if(payload.is_object()){
+            if(payload.contains("case")&&payload["case"].is_string())path=payload["case"].get<std::string>();
+            if(payload.contains("flow")&&payload["flow"].is_string())flow=payload["flow"].get<std::string>();
+        }
+        auto row=nlohmann::json{{"task_id",task.getId()},{"run_id",task.getRunId()},
+            {"status",toString(state)},{"case",path.substr(0,512)},{"flow",flow.substr(0,64)},
+            {"recovery_required",task.recoveryRequired()}};
+        if(task.getStartedAt().time_since_epoch().count()>0)row["started_at_ms"]=
+            std::chrono::duration_cast<std::chrono::milliseconds>(task.getStartedAt().time_since_epoch()).count();
+        group["items"].push_back(std::move(row));
+    }
+    for(auto& group:result.active_tasks)std::sort(group["items"].begin(),group["items"].end(),
+        [](const nlohmann::json& a,const nlohmann::json& b){return a["task_id"].get<TaskId>()<b["task_id"].get<TaskId>();});
+    for(auto it=result.active_tasks.begin();it!=result.active_tasks.end();++it) {
+        const auto known=std::find_if(result.workers.begin(),result.workers.end(),
+            [&](const Worker& w){return w.getId()==it.key();});
+        if(known==result.workers.end()) {
+            Worker historical(it.key(),it.key(),1);
+            historical.setIdentity(it.key(),it.key());
+            result.workers.push_back(std::move(historical));
+        }
+    }
+    return result;
+}
+
 nlohmann::json Scheduler::statusCounts() const {
     std::lock_guard<std::mutex> lock(mutex_);if(store_)return store_->statusCounts();
     auto result=nlohmann::json::object();for(const auto& task:tasks_){auto key=toString(task.second.getStatus());result[key]=result.value(key,uint64_t(0))+1;}return result;
@@ -670,7 +799,7 @@ bool Scheduler::isValidFinalStatus(TaskStatus status) const {
            status == TaskStatus::TIMEOUT;
 }
 
-bool Scheduler::markTaskStarted(TaskId task_id, const WorkerId& worker_id) {
+bool Scheduler::markTaskStarted(TaskId task_id, const WorkerId& worker_id, const std::string& expected_run) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = tasks_.find(task_id);
@@ -681,13 +810,15 @@ bool Scheduler::markTaskStarted(TaskId task_id, const WorkerId& worker_id) {
 
     Task& task = it->second;
 
-    if (task.getStatus() != TaskStatus::ASSIGNED) {
-        LOG_WARN(LogModule::SCHEDULER, "Cannot start task not in ASSIGNED state: " + std::to_string(task_id));
+    if (task.getWorkerId() != worker_id || (!expected_run.empty() && task.getRunId()!=expected_run)) {
+        LOG_WARN(LogModule::SCHEDULER, "Worker id mismatch for task start: task=" + std::to_string(task_id) + " expected=" + task.getWorkerId() + " got=" + worker_id);
         return false;
     }
 
-    if (task.getWorkerId() != worker_id) {
-        LOG_WARN(LogModule::SCHEDULER, "Worker id mismatch for task start: task=" + std::to_string(task_id) + " expected=" + task.getWorkerId() + " got=" + worker_id);
+    // Duplicate START is idempotent only for the same still-current attempt.
+    if(!expected_run.empty() && task.getStatus()==TaskStatus::RUNNING)return true;
+    if (task.getStatus() != TaskStatus::ASSIGNED) {
+        LOG_WARN(LogModule::SCHEDULER, "Cannot start task not in ASSIGNED state: " + std::to_string(task_id));
         return false;
     }
 

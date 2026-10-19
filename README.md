@@ -1,120 +1,82 @@
-# GalaxCore Regression Platform — 干净部署版
+# GalaxCore Regression Platform
 
-基于源码提交 c1a3b957f4bb481c4cca388566eaf9c160546cef 整理。
-这是独立部署副本，不包含 Git 历史、测试源码、自动验收脚本、旧数据库、
-旧日志、Worker 身份缓存、恢复记录、SVN 副本或旧编译产物。
-GUI 和 Worker 的模拟运行入口已移除。
+用于 GalaxCore 回归测试的调度平台：C++ Server、Python Worker、Qt5 GUI。
 
-## 目录
+## 1. 编译
 
-- server/：C++ 服务端、Tasks.yaml、flow 模板、clock.py、启停脚本。
-- worker/：Python 工作机、slot 管理与完整 GalaxCore SVN 工作副本准备。
-- gui/qt/：真实连接的 Qt5 GUI。
-- client/：正式 gcrp_client 命令行客户端。
-- common/、third_party/：公共代码和必要依赖。
-- config/server.conf、config/worker.config：唯一两份部署配置。
-- tools/：仅保留服务管理、日志轮转、数据库备份、存储健康检查。
-- database/、logs/、worker-output/、worker/workers_slots/：初始为空。
+在项目根目录执行。需要 C++17、CMake 3.15.2+、SQLite3 开发库；
+GUI 需要 Qt5 5.8+ Widgets/Network，Python 需要 3.6.8+。
 
-数据库首次启动时由 Server 自动创建（schema v6）；任务 ID 从 1 开始。
-已有 v5 数据库可自动升级；升级后不要用旧版本 Server 打开，请先备份。
-没有把旧 DB、WAL/SHM、Clock 提交计划或待上传日志一起打包。
-项目内的“test2”“PJtest”“testcase”属于真实业务，不是应删除的测试框架。
+```bash
+make                         # 默认 32 线程；安装 Qt5 时一起编译 GUI
+make GUI=OFF                 # 不编译 GUI
+make GUI=ON PARALLEL_JOBS=4   # 必须编译 GUI，使用 4 线程
+```
 
-## 部署前必须做
+Worker 不需要编译 C++，需具备 SVN、Bash 和实际 GalaxCore/PJtest 运行环境。
 
-1. 停止旧 Clock 提交，等待正在执行的案例与日志上报完成。
-2. 使用旧项目的 stop.sh 正常停止 Worker 和 Server，备份整个旧部署。
-3. **在全新目录解压本包，不要覆盖旧目录。** 不拷入旧数据库、Clock 状态、
-   Worker-output、身份文件、活动恢复记录或旧 build。
-   新 Server 不能接收带旧待报任务的 Worker，不能把新空 DB 当作重启恢复。
-4. 本包已按之前提供的信息预填 192.168.10.11:8080、共享 ZIP 路径和 SVN URL；
-   部署前核对实际环境。Server 的 work_root、Tasks.yaml 中 runlist 及其绝对
-   路径条目必须对应当前 Server 上的 test2；原有业务模板与每日五条任务保留。
-5. 各 Worker 仅按本机容量调整 worker.slots，主机名与 slot1..slotN 自动生成。
-   worker.svn_revision 留空；不要填 ZIP 目录。flow_config 由 Server 随任务下发。
+## 2. 配置
 
-## 编译和启动
+只需修改两份配置：
 
-需要 C++17 编译器、CMake >=3.15.2、SQLite3 开发头文件/库和 pthread。
-GUI 额外需要 Qt5 >=5.8 Widgets/Network；Worker 不需要编译 C++。
-Python 需要 3.6.8 或以上，Clock 还需要 PyYAML；SVN/Bash 与实际 PJtest 环境
-仍由工作机准备。本包不提供 GalaxCore/Vivado 或平台相关预编译二进制。
+- Server：`config/server.conf`，设置监听 IP、端口、test2 工作目录、ZIP 目录和 flow 模板。
+- Worker：`config/worker.config`，设置 Server IP/端口、SVN URL、ZIP 目录和 `worker.slots` 数量。
 
-在项目根目录：
+`worker.svn_revision` 可留空，不要填写目录。主机名和 slot 名称自动生成；
+每个 slot 使用独立完整 SVN 副本，已有副本会复用。flow_config 由 Server 下发。
 
-    chmod +x server/*.sh worker/*.sh
-    make GUI=OFF
-    ./server/start.sh --config config/server.conf
-    ./server/status.sh --config config/server.conf
+## 3. 启动和停止
 
-工作机上：
+以下命令均在项目根目录执行。
 
-    ./worker/start.sh --config config/worker.config
-    ./worker/status.sh --config config/worker.config
+**Server：**
 
-普通 make 默认使用 32 并行编译；小机器可加 PARALLEL_JOBS=1。
-Qt 主机可 make GUI=ON；GUI 启动只需要：
+```bash
+./server/start.sh --config config/server.conf
+./server/status.sh --config config/server.conf
+./server/stop.sh --config config/server.conf
+```
 
-    ./build/bin/gcrp_gui --ip 192.168.10.11 --port 8080
+**Worker：**
 
-CLI 查询（明确指定新配置，避免继承旧 GCRP_CONFIG）：
+```bash
+./worker/start.sh --config config/worker.config
+./worker/status.sh --config config/worker.config
+./worker/stop.sh --config config/worker.config
+```
 
-    env GCRP_CONFIG=./config/server.conf ./build/bin/gcrp_client status
-    env GCRP_CONFIG=./config/server.conf ./build/bin/gcrp_client workers
+**GUI：** 在有桌面环境的机器运行，替换为实际 Server 地址。
 
-## 每日回归
+```bash
+./build/bin/gcrp_gui --ip 192.168.10.11 --port 8080
+```
 
-先在 Server 项目根目录检查配置与路径：
+GUI 可查看工作机、勾选 testcase 提交任务、查询任务/每日回归和查看执行日志。
+“下线”只停止分配新任务，当前案例正常结束；“上线”恢复已连接 slot 的调度。
+失联任务可用“故障恢复…”处理，但必须先确认原机器已关机或相关进程已停止。
+恢复后保留旧执行记录，故障 slot 保持下线；取消批次不重排，超过重试上限转失败。
 
-    env GCRP_CONFIG=./config/server.conf python3 -B server/clock.py --dry-run
+## 4. 每日定时回归
 
-确认后再添加 **一条** crontab；替换下面的项目绝对路径：
+配置 `server/Tasks.yaml` 和 `server/templates/<模板名>.json`，先预览：
 
-    0 10 * * * cd /你的新部署路径/GalaxCoreRegressionPlatform && /usr/bin/env GCRP_CONFIG=./config/server.conf /usr/bin/python3 -B server/clock.py >/dev/null 2>&1
+```bash
+env GCRP_CONFIG=./config/server.conf python3 -B server/clock.py --dry-run
+```
 
-不要同时保留旧 Clock 定时项。每条 Tasks.yaml 是一个批次，整批提交后等待
-30 秒，不是每个 testcase 等待。一天只发布一份不可变计划；故障后保留并
-续用新部署生成的 Clock 状态，不要删除状态强行再提交。
+Clock 还需要 PyYAML。确认无误后，在 Server 的 crontab 添加一条每天 10:00 的任务，
+将下面的项目路径替换为实际绝对路径：
 
-## 日常运维
+```cron
+0 10 * * * cd /你的项目路径/GalaxCoreRegressionPlatform && /usr/bin/env GCRP_CONFIG=./config/server.conf /usr/bin/python3 -B server/clock.py >/dev/null 2>&1
+```
 
-    python3 -B tools/health_check.py --role server
-    python3 -B tools/health_check.py --role worker
-    python3 -B tools/backup_database.py
-    ./worker/reload.sh --config config/worker.config
-    ./worker/stop.sh --config config/worker.config
-    ./server/stop.sh --config config/server.conf
+每条 Tasks.yaml 配置对应一个批次，批次之间默认等待 30 秒。
+每日提交日志位于 `logs/daily/`；不要重复添加旧定时项或删除 Clock 状态强制重提。
 
-运行目录会在使用时自动创建。Server/Worker 日志默认保留 30 天；
-Worker 的任务日志只有在 Server 完整文件集校验确认后才清理，失败则保留。
-源 testcase 的原始 run、runner 日志与业务结果应区分查看。
-单个归档文件上限 1 GiB，超过需人工转移，不能删除待报证据强行恢复。
+## 注意
 
-Clock 每日提交前备份 SQLite，默认保留 7 天；同机备份不是异地灾备，
-应另行复制已校验的备份。共享 ZIP 的生成与最近 50 版清理由原维护流程负责。
-
-人工复测新建人工批次，不覆盖历史，不参与每日回归比较。取消只处理未开始
-和后续案例，ASSIGNED/RUNNING 正常结束。
-添加任务时，业务目标位于设置区顶部；批次名称自动使用“人工验证 + 所选模板名”，
-切换模板同步更新。同名批次仍生成独立 UUID，不会合并；高级设置仅含优先级与超时。
-
-本版按部署要求开放远程管理，不提供身份认证：可连接 Server 的用户都能
-暂停/恢复接单、申请 SVN 更新和删除已结束记录。只能部署在受信任内网，
-通过防火墙限制可访问机器，不得暴露公网。恢复整机接单只恢复 ONLINE slots；
-SVN 更新需 Worker 支持维护协议，排空后执行，不会强杀正在运行的案例。
-GUI 将暂停/恢复接单标为“下线/上线”，并把 SVN 更新标为“更新”；这些操作
-不改变通信状态 ONLINE/OFFLINE，也不远程关机。Slot 操作按钮最小宽度 112，
-操作列至少 260，窄窗口使用横向滚动，不再挤掉文字。
-
-任务管理支持删除已结束批次；单 testcase 可在详情中删除。活动任务由 Server
-强制拒绝，需先停止后续并等待运行任务结束。采用持久化逻辑删除，记录从
-任务/回归查询消失，重启不恢复；原始日志、防重复提交键、ID 高水位和不可变
-每日计划保留。每日计划会标明 DELETED，不把人工删除误认为 Clock 未提交。
-删除不是磁盘清理，也不会删除共享 GalaxCore ZIP。GUI 删除需要二次确认。
-
-## 清理边界
-
-原开发仓库和原运行数据没有被删除，作为回退备份保留。
-部署包内已删除测试/验收代码及构建入口；不得使用本包声称替代完整回归验证。
-清单 DEPLOYMENT-MANIFEST.json 提供来源与逐文件 SHA-256（不包含清单自身）。
+- 本项目暂未提供身份认证，仅部署在受信任内网，不要暴露公网。
+- 升级前备份，保留原数据库、Clock 状态、Worker 恢复记录及待上传日志；不要用空目录覆盖运行数据。
+- Server/Worker 日志默认保留 30 天；Worker 日志确认已完整上传 Server 后才清理。
+- 部署源码不包含数据库、SVN 副本、测试脚本或编译产物。

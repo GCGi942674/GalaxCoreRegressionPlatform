@@ -33,6 +33,12 @@ struct BatchSnapshot {
     size_t cancelled_now{0};
 };
 
+struct WorkerInventorySnapshot {
+    uint64_t worker_generation{0}, task_generation{0};
+    std::vector<Worker> workers;
+    nlohmann::json active_tasks = nlohmann::json::object();
+};
+
 class Scheduler {
 public:
     explicit Scheduler(WorkerManager& worker_manager,
@@ -42,6 +48,8 @@ public:
     void holdWorker(const WorkerId& worker_id);
     nlohmann::json recoverWorker(const WorkerId& worker_id, const std::string& state,
                                  TaskId task_id, const std::string& run_id, int max_retries);
+    nlohmann::json recoverOfflineWorkers(bool machine, const std::string& target,
+        const nlohmann::json& expected_tasks, int max_retries);
 
     bool submitTask(Task task);
     std::optional<TaskId> submitTask(Task task, const std::string& submission_key,
@@ -50,7 +58,8 @@ public:
                                             const std::string& request_json) const;
     std::vector<TaskAssignment> schedule();
     bool completeTask(TaskId task_id, TaskStatus final_status,
-                      nlohmann::json execution_summary = nullptr);
+                      nlohmann::json execution_summary = nullptr,
+                      const WorkerId& expected_worker = "", const std::string& expected_run = "");
     bool cancelTask(TaskId task_id);
     size_t deleteRecords(TaskId id, const std::string& batch_id);
     bool isBatchDeleted(const std::string& batch_id) const;
@@ -59,7 +68,7 @@ public:
     std::optional<BatchSnapshot> cancelBatch(const std::string& batch_id);
     bool isBatchStopped(const std::string& batch_id) const;
 
-    bool markTaskStarted(TaskId task_id, const WorkerId& worker_id);
+    bool markTaskStarted(TaskId task_id, const WorkerId& worker_id, const std::string& expected_run = "");
     bool rollbackAssignment(TaskId task_id);
     // nullopt: assignment was cancelled/replaced before the dispatch claim.
     // Cancellation/rollback returns false while the dispatcher is in flight.
@@ -72,6 +81,7 @@ public:
     // The tasks and generation are captured under the same lock.
     std::pair<uint64_t, std::vector<Task>> taskSnapshot() const;
     uint64_t taskGeneration() const;
+    WorkerInventorySnapshot workerInventory() const;
     nlohmann::json statusCounts() const;
     void publishDailyPlan(const nlohmann::json& manifest);
     nlohmann::json dailyPlan(const std::string& day) const;
@@ -121,7 +131,8 @@ private:
     mutable std::mutex mutex_;
 
     bool isValidFinalStatus(TaskStatus status) const;
-    std::string recoverLost(Task& task, int max_retries);
+    std::string recoverLost(Task& task, int max_retries, bool release_slot = true,
+                            const std::string& reason = "worker_lost");
     void releaseRecoveryHold(const WorkerId& worker_id);
 
 };

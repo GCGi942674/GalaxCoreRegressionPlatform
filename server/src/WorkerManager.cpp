@@ -44,7 +44,10 @@ std::shared_ptr<const WorkerControl> WorkerManager::controlFor(const Json& state
     WorkerControl c;
     if(state.at("workers").contains(id)){
         const auto& row=state.at("workers").at(id);
-        if(row.at("machine_id")!=machine)throw std::invalid_argument("managed Worker machine identity changed");
+        // Empty only for an operator-paused historical owner whose machine
+        // identity was unavailable after Server restart. The Worker ID stays exact.
+        if(row.at("machine_id")!="" && row.at("machine_id")!=machine)
+            throw std::invalid_argument("managed Worker machine identity changed");
         c=parseControl(row);
     }else if(state.at("machines").contains(machine))c.accepting=state.at("machines").at(machine).get<bool>();
     return std::make_shared<const WorkerControl>(std::move(c));
@@ -94,8 +97,10 @@ std::optional<Json> WorkerManager::control(bool machine,const std::string& targe
         WorkerControl c=*controlFor(next,id,host);
         const bool pending=c.state=="PENDING"||c.state=="RUNNING";
         if(action=="update"){
-            if(found==workers_.end()||found->second->getStatus()!=WorkerStatus::ONLINE)
+            if(found==workers_.end()||found->second->getStatus()!=WorkerStatus::ONLINE){
+                if(machine){skipped.push_back(id);continue;}
                 throw std::logic_error("update requires online, non-draining slots");
+            }
             if(!found->second->supportsControl()||found->second->getTotalSlots()!=1)
                 throw std::logic_error("Worker does not support maintenance v1; upgrade Worker first");
             if(pending)throw std::logic_error("another maintenance operation is pending");
@@ -257,7 +262,10 @@ bool WorkerManager::acquireSlot(const WorkerId& worker_id) {
 
 bool WorkerManager::releaseSlot(const WorkerId& worker_id) {
     std::lock_guard<std::mutex> lock(mutex_);
+    return releaseSlotLocked(worker_id);
+}
 
+bool WorkerManager::releaseSlotLocked(const WorkerId& worker_id) {
     auto it = workers_.find(worker_id);
     if (it == workers_.end()) {
         return false;

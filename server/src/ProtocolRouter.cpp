@@ -201,6 +201,23 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                     {"page_complete",all_complete},{"snapshot_generation",generation}});
             }catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
         }
+        case MessageType::RECOVER_OFFLINE_WORKERS: {
+            try {
+                Api::validate(request.data,{"machine_id","worker_id","confirm_stopped","tasks"});
+                const auto machine=Api::text(request.data,"machine_id",256),worker=Api::text(request.data,"worker_id",256);
+                if(machine.empty()==worker.empty())throw std::invalid_argument("choose machine_id or worker_id");
+                if(!request.data.contains("confirm_stopped") || !request.data["confirm_stopped"].is_boolean() ||
+                   !request.data["confirm_stopped"].get<bool>() || !request.data.contains("tasks"))
+                    throw std::invalid_argument("operator must confirm original execution has stopped");
+                auto result=scheduler_.recoverOfflineWorkers(!machine.empty(),machine.empty()?worker:machine,
+                    request.data["tasks"],Config::instance().getInt("server.recovery_max_retries",1));
+                LOG_WARN(LogModule::WORKER,"Operator-confirmed offline recovery (trusted LAN, no authentication): "+
+                    request.data.dump()+" result="+result.dump());
+                try{scheduling_driver_.requestSchedule();}catch(const std::exception& e){LOG_WARN(LogModule::SCHEDULER,e.what());}
+                return buildResponse(request,ResponseCode::OK,"ok",result);
+            }catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
+             catch(const std::logic_error& e){return buildResponse(request,ResponseCode::INVALID_STATE,e.what());}
+        }
         case MessageType::CONTROL_WORKERS: {
             try {
                 Api::validate(request.data,{"machine_id","worker_id","action","operation_id","scope"});
@@ -304,7 +321,7 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 const auto data = request.type == MessageType::QUERY_TASKS
                     ? task_lists_.query(request.data, scheduler_)
                     : request.type == MessageType::QUERY_WORKERS
-                    ? Api::workers(request.data, worker_manager_)
+                    ? Api::workers(request.data, worker_manager_, &scheduler_)
                     : Api::capabilities(request.data);
                 return buildResponse(request, ResponseCode::OK, "ok", data);
             } catch (const std::invalid_argument& e) {
@@ -531,10 +548,7 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 return buildResponse(request, ResponseCode::INVALID_STATE, "run id mismatch");
             if (task->getWorkerId() != start_req.worker_id)
                 return buildResponse(request, ResponseCode::INVALID_REQUEST, "worker_id mismatch");
-            if (!task->getRunId().empty() && task->getStatus() == TaskStatus::RUNNING)
-                return buildResponse(request, ResponseCode::OK, "ok");
-
-            if (task->getStatus() != TaskStatus::ASSIGNED) {
+            if (task->getStatus() != TaskStatus::ASSIGNED && task->getStatus() != TaskStatus::RUNNING) {
                 LOG_WARN(LogModule::NETWORK, "TASK_START rejected: task not in ASSIGNED state");
                 return buildResponse(request, ResponseCode::INVALID_STATE, "task not ready to start");
             }
@@ -544,7 +558,7 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 return buildResponse(request, ResponseCode::INVALID_REQUEST, "worker_id mismatch");
             }
 
-            bool success = scheduler_.markTaskStarted(start_req.task_id, start_req.worker_id);
+            bool success = scheduler_.markTaskStarted(start_req.task_id, start_req.worker_id, start_req.run_id);
             if (!success) {
                 return buildResponse(request, ResponseCode::INVALID_STATE, "failed to start task");
             }
@@ -588,7 +602,8 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 LOG_WARN(LogModule::NETWORK, "TASK_RESULT rejected: task not in RUNNING state");
                return buildResponse(request, ResponseCode::INVALID_STATE, "task not running");
             }
-            bool success = scheduler_.completeTask(result_req.task_id, result_req.status, std::move(summary));
+            bool success = scheduler_.completeTask(result_req.task_id, result_req.status, std::move(summary),
+                result_req.worker_id,result_req.run_id);
             if (!success) {
                 return buildResponse(request, ResponseCode::INTERNAL_ERROR, "failed to complete task");
             }

@@ -49,6 +49,7 @@ private:
     QComboBox* machines_{};
     QListWidget* hostsList_{};
     QList<QPushButton*> hostControlButtons_;
+    QPushButton* hostRecoveryButton_{};
     bool managementPending_{false};
     QCheckBox* showOffline_{};
     QLabel *workerSummary_{}, *catalogStatus_{};
@@ -92,6 +93,7 @@ private:
                    std::function<void(bool,Json,QString)> done, int page = 0, uint64_t generation = 0);
     void showWorkers();
     void controlWorkers(bool machine, const QString& target, const QString& action);
+    void recoverOfflineWorkers(bool machine, const QString& target);
     void showTasks();
     void filterTasks();
     void loadCatalog();
