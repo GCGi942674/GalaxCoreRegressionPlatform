@@ -203,7 +203,9 @@ def main():
             rig.start_server()
             assert rig.task(third)['status'] == 'SUCCEEDED'
             with sqlite3.connect(str(rig.root / 'state.db')) as db:
-                assert db.execute('PRAGMA user_version').fetchone()[0] == 3
+                assert db.execute('PRAGMA user_version').fetchone()[0] == 5
+                assert db.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='daily_plans'").fetchone()[0] == 1
+                assert db.execute('SELECT count(*) FROM task_query_index').fetchone()[0] == 4
         except BaseException:
             for path in sorted(rig.root.glob('process-*.log')):
                 print(str(path) + '\n' + path.read_text(errors='replace'), file=sys.stderr)

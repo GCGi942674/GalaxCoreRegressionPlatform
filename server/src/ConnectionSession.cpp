@@ -48,9 +48,9 @@ void ConnectionSession::handleClose() {
 }
 
 bool ConnectionSession::authorizeLog(const ProtocolMessage& request) {
-    if(request.type==MessageType::LOG_APPEND)
+    if(request.type==MessageType::LOG_APPEND||request.type==MessageType::LOG_STATE)
         return role_==ConnectionRole::WORKER&&worker_.permitsLogUpload(request);
-    if(request.type!=MessageType::QUERY_LOGS&&request.type!=MessageType::READ_LOG)return false;
+    if(request.type!=MessageType::QUERY_LOGS&&request.type!=MessageType::READ_LOG&&request.type!=MessageType::QUERY_DAILY_PLAN)return false;
     if(role_==ConnectionRole::WORKER)return false;
     role_=ConnectionRole::CLIENT;return true;
 }

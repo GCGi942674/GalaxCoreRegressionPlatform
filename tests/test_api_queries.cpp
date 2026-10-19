@@ -93,4 +93,15 @@ int main() { return testMain([] {
     const auto management=router.handle(heartbeat).data;
     CHECK(management["code"]==0);CHECK(management["result"]["command"].is_null());
     CHECK(management["result"]["administration_disabled"]==true);
+    WorkerManager summaryWorkers;Scheduler summaryScheduler(summaryWorkers);
+    SchedulingCoordinator summaryCoordinator(summaryScheduler,dispatcher);SchedulingDriver summaryDriver(summaryCoordinator);
+    TaskService summaryService(summaryScheduler,summaryDriver);ProtocolRouter summaryRouter(summaryService,summaryScheduler,summaryWorkers,summaryDriver);
+    CHECK(summaryWorkers.registerWorker("summary-slot","summary",1));
+    CHECK(summaryScheduler.submitTask(Task(1,TaskType::REGRESSION,"long-result","1")));
+    CHECK(summaryScheduler.schedule().size()==1);CHECK(summaryScheduler.markTaskStarted(1,"summary-slot"));
+    ProtocolMessage resultRequest;resultRequest.type=MessageType::TASK_RESULT;
+    resultRequest.data={{"task_id",uint64_t(1)},{"worker_id","summary-slot"},{"status","SUCCEEDED"},
+        {"message",nlohmann::json({{"status","SUCCEEDED"},{"case_status","PASS"},{"reason","pass"},{"argv",std::string(9000,'x')}}).dump()}};
+    CHECK(summaryRouter.handle(resultRequest).data["code"]==0);
+    CHECK(summaryScheduler.getTask(1)->getExecutionSummary()["case_status"]=="PASS");
 }); }

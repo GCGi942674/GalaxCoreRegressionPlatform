@@ -290,7 +290,12 @@ void MainWindow::submitNext() {
     if(submitIndex_==int(pendingSubmissions_.size())){submitting_=false;submit_->setEnabled(true);QMessageBox::information(this,QStringLiteral("提交完成"),QStringLiteral("已接收 %1 个任务\n批次 %2").arg(submitIndex_).arg(manualBatch_));refresh();return;}
     note(QStringLiteral("提交批次 %1：%2 / %3 已接收").arg(manualBatch_).arg(submitIndex_).arg(pendingSubmissions_.size()));
     rpc_.request("submit_task",pendingSubmissions_[submitIndex_],[this](RpcReply r){
-        if(!r.ok){submitting_=false;submit_->setEnabled(true);QMessageBox::warning(this,QStringLiteral("部分提交 / 结果可能不确定"),QStringLiteral("已确认接收 %1 个任务。\n批次：%2\n%3\n请先查询本批次；直接重新提交会创建新批次。").arg(submitIndex_).arg(manualBatch_).arg(r.error));refresh();return;}++submitIndex_;submitNext();
+        if(!r.ok){
+            const auto retry=QMessageBox::question(this,QStringLiteral("部分提交 / 结果可能不确定"),
+                QStringLiteral("已确认接收 %1 个案例。\n批次：%2\n%3\n是否使用原幂等键重试当前及后续案例？不会重复创建已接收的案例。\n选“否”将保留已接收部分，可在任务管理中查询。").arg(submitIndex_).arg(manualBatch_).arg(r.error));
+            if(retry==QMessageBox::Yes){submitNext();return;}
+            submitting_=false;submit_->setEnabled(true);refresh();return;
+        }++submitIndex_;submitNext();
     });
 }
 

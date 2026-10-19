@@ -16,6 +16,8 @@ enum class MessageType {
     CONTROL_WORKERS,
     CANCEL_TASK,
     QUERY_BATCH,
+    PUBLISH_DAILY_PLAN,
+    QUERY_DAILY_PLAN,
     CANCEL_BATCH,
     QUERY_REGRESSION,
     QUERY_PROGRESS,
@@ -32,6 +34,7 @@ enum class MessageType {
     TASK_START,
     TASK_RESULT,
     LOG_APPEND,
+    LOG_STATE,
 
     RESPONSE,
 

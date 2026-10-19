@@ -138,8 +138,11 @@ execution_started 另记录 command_pid 与 argv。
 ## 清理失败与诊断
 
 保留 execution.json、result.json、原始有效 result.env、实际 flow_config、
-manifest.json、stdout/stderr、ZIP 与私有 workspace。post-clean 前另保存最多
-8 MiB testcase run。无效结果仍可能只留在私有 workspace，尚非完整历史服务。
+manifest.json、stdout/stderr、ZIP 与私有 workspace。post-clean 前完整复制本次新生成
+或修改的 testcase run，不再仅保存前 8 MiB；采集元信息写入 evidence.json。
+执行未开始或 run 未变化时不会把旧 run 当作本次证据。证据复制失败时保留源文件
+并隔离，不能继续清理原文件。成功归档且 Server 校验通过后，已上传的本地日志会清理，
+详见 log-archive-v1.md；ZIP/workspace 不在该自动清理范围。
 
 post-clean 非零/异常、监督凭证缺失会隔离 Worker：不发送释放 slot 的 TASK_RESULT，
 Worker 断开。Server 可能继续保持 RUNNING 和 slot 占用，后续任务排队。

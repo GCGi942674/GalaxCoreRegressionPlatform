@@ -145,7 +145,9 @@ QWidget* MainWindow::regressionPage() {
     dateA_=new QDateEdit(demo_?QDate(2026,10,11):QDate::currentDate().addDays(-1));dateB_=new QDateEdit(demo_?QDate(2026,10,12):QDate::currentDate());
     dateA_->setCalendarPopup(true);dateB_->setCalendarPopup(true);dateA_->setDisplayFormat("yyyy-MM-dd");dateB_->setDisplayFormat("yyyy-MM-dd");dateA_->setMinimumWidth(140);dateB_->setMinimumWidth(140);
     bar->addWidget(new QLabel(QStringLiteral("基准日期")));bar->addWidget(dateA_);bar->addWidget(new QLabel(QStringLiteral("比较日期")));bar->addWidget(dateB_);
-    auto compare=new QPushButton(QStringLiteral("比较 / 首页"));bar->addWidget(compare);bar->addStretch();layout->addLayout(bar);
+    auto compare=new QPushButton(QStringLiteral("比较 / 首页"));bar->addWidget(compare);
+    auto plan=new QPushButton(QStringLiteral("比较日 · 回归完整性"));plan->setObjectName("dailyPlan");
+    connect(plan,&QPushButton::clicked,this,[this]{showDailyPlan();});bar->addWidget(plan);bar->addStretch();layout->addLayout(bar);
     auto filters=new QHBoxLayout;regressionStage_=new QComboBox;regressionStage_->addItem(QStringLiteral("全部阶段"),"");
     regressionChange_=new QComboBox;
     for(const auto& item:QList<QPair<QString,QString>>{{QStringLiteral("全部变化"),""},{QStringLiteral("新回退"),"REGRESSION"},

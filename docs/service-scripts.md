@@ -31,3 +31,9 @@ Server：
 服务记录在 `data/services`，操作用 flock 串行化；发送信号前核对 PID、Linux 进程启动时刻及本项目启动入口，不用 pkill 或进程名批量终止。只管理本脚本启动的进程，不接管旧前台启动或其他部署的进程。状态只说明进程存在，不代表完成 SVN checkout、注册或网络就绪。
 
 Linux 回归检查：`python3 -B tests/test_service_control.py`，使用独立临时假 Worker，不接触真实任务。
+
+Manager 意外退出后，新 Manager 会验证本项目 Worker 的 PID、启动时刻、
+worker_id、输出目录和脚本，接管仍持锁的 slot。它们同样参加缩容和 stop
+排空，不重启当前 testcase。缺少 `.worker-process.json` 的旧 Worker 或身份
+不匹配时安全拒绝接管并报错；升级前先用旧 Manager 正常排空，不能删除
+journal 或批量杀进程绕过。

@@ -53,4 +53,11 @@ int main() {
         assert(scheduler.completeTask(id, TaskStatus::SUCCEEDED));
     }
     assert(chosen == std::set<std::string>({"a-1", "b-1", "b-2"}));
+    WorkerManager limitedWorkers;Scheduler limited(limitedWorkers,2);
+    for(int i=1;i<=4;++i){assert(limitedWorkers.registerWorker("limited-"+std::to_string(i),"host",1));
+        assert(limited.submitTask(Task(i,TaskType::REGRESSION,"limit","1")));}
+    auto capped=limited.schedule();assert(capped.size()==2);assert(limited.schedule().empty());
+    assert(limited.markTaskStarted(capped[0].task_id,capped[0].worker_id));
+    assert(limited.schedule().empty());assert(limited.completeTask(capped[0].task_id,TaskStatus::SUCCEEDED));
+    assert(limited.schedule().size()==1);
 }

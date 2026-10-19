@@ -2,6 +2,7 @@
 #define GCRP_STATE_STORE_H
 
 #include "task/Task.h"
+#include "task/TaskQuery.h"
 #include <optional>
 #include <utility>
 #include <string>
@@ -29,8 +30,15 @@ public:
                                          const std::string& batch_id = "") const;
     std::pair<TaskId,uint64_t> highWaterMarks() const;
     nlohmann::json statusCounts() const;
+    void publishDailyPlan(const nlohmann::json& manifest);
+    nlohmann::json dailyPlan(const std::string& day) const;
+    bool hasBatch(const std::string& id) const;
     void visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,TaskId id=0,
-                    bool active_only=false,const std::string& batch_id="") const;
+                    bool active_only=false,const std::string& batch_id="",
+                    const std::vector<std::string>& dates={}) const;
+    std::vector<TaskGroupSnapshot> taskGroups(const std::string& target,const std::string& revision,
+                                             const std::string& batch_id) const;
+    uint64_t excludedRegressionCount() const;
     std::vector<std::string> loadStoppedBatches() const;
     nlohmann::json loadWorkerControls() const;
     void saveWorkerControls(const nlohmann::json&);

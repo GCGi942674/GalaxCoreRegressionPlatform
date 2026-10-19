@@ -11,6 +11,13 @@ enables WAL, `synchronous=FULL` and foreign keys, and checks `user_version`.
 An unreadable database or unknown schema version prevents startup. Schema V1
 contains `batches`, `tasks`, `task_runs`, and `submission_keys`.
 
+Current schema is v5: it also retains recovery/Worker management state, immutable
+`daily_plans`, and a transactional `task_query_index` for parent summaries and
+scheduled-date queries. Upgrade from v1-v3 backfills the derived index; v4 gains
+the daily plan table without changing task IDs/results.
+Back up the stopped Server's database before upgrading; older executables refuse
+the upgraded DB. Never remove a live DB/WAL or edit user_version to force rollback.
+
 Protocol requests are processed in receive order on business worker threads;
 each connection has a bounded message queue (4 MiB, 512 messages). Database
 syncs do not run in the socket I/O loop.

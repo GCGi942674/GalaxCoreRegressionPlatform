@@ -15,8 +15,10 @@ public:
     static bool validName(const std::string& value);
     nlohmann::json append(uint64_t task_id, const std::string& run_id,
                           const std::string& name, uint64_t offset,
-                          const std::string& hex, bool complete);
+                          const std::string& hex, bool complete,
+                          const std::string& expected_sha256 = "");
     nlohmann::json list(uint64_t task_id, const std::string& run_id);
+    nlohmann::json reportState(uint64_t task_id,const std::string& run_id,const nlohmann::json& state);
     nlohmann::json read(uint64_t task_id, const std::string& run_id,
                         const std::string& name, uint64_t offset, size_t limit);
     size_t pruneOlderThan(int days);

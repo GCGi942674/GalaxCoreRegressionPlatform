@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <limits>
+#include <map>
 
 namespace GCRP {
 namespace {
@@ -68,6 +69,14 @@ int64_t checkedId(TaskId id) {
         throw std::runtime_error("task id outside SQLite range");
     return static_cast<int64_t>(id);
 }
+void bindQueryIndex(Statement& statement,const Task& task){
+    statement.number(1,checkedId(task.getId()));statement.text(2,taskBusinessOutcome(task));
+    const auto source=taskContext(task,"source"),day=taskContext(task,"date"),stage=taskContext(task,"template");
+    statement.text(3,source);statement.text(4,day);statement.text(5,stage);
+    const auto& p=task.getPayload();const bool has_case=p.is_object()&&p.contains("case")&&p["case"].is_string()&&!p["case"].get_ref<const std::string&>().empty();
+    statement.number(6,has_case?1:0);statement.number(7,source=="scheduled"&&!stage.empty()&&validQueryDate(day)?1:0);
+    statement.run();statement.reset();
+}
 } // namespace
 
 void StateStore::exec(const char* sql) const {
@@ -101,7 +110,7 @@ StateStore::StateStore(const std::string& path, int busy_timeout_ms) {
             check(sqlite3_step(version.value), db_);
             schema_version = sqlite3_column_int(version.value, 0);
         }
-        if (schema_version < 0 || schema_version > 3)
+        if (schema_version < 0 || schema_version > 5)
             throw std::runtime_error("unsupported GCRP database schema version");
         exec("BEGIN IMMEDIATE");
         try {
@@ -113,7 +122,15 @@ StateStore::StateStore(const std::string& path, int busy_timeout_ms) {
             exec("CREATE INDEX IF NOT EXISTS tasks_queue ON tasks(status,recovery_required,priority,queue_sequence)");
             exec("CREATE INDEX IF NOT EXISTS tasks_batch ON tasks(batch_id,status)");
             exec("CREATE TABLE IF NOT EXISTS worker_management (name TEXT PRIMARY KEY, value TEXT NOT NULL)");
-            exec("PRAGMA user_version=3");
+            exec("CREATE TABLE IF NOT EXISTS task_query_index (task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id), outcome TEXT NOT NULL, source TEXT NOT NULL, day TEXT NOT NULL, template TEXT NOT NULL, has_case INTEGER NOT NULL, classified INTEGER NOT NULL)");
+            exec("CREATE INDEX IF NOT EXISTS query_day ON task_query_index(day,template,task_id)");
+            exec("CREATE INDEX IF NOT EXISTS query_classified ON task_query_index(classified,has_case)");
+            if(schema_version<4){
+                Statement index(db_,"INSERT OR REPLACE INTO task_query_index VALUES(?,?,?,?,?,?,?)");
+                visitTasks([&](Task&& task,uint64_t){bindQueryIndex(index,task);});
+            }
+            exec("CREATE TABLE IF NOT EXISTS daily_plans (day TEXT PRIMARY KEY, manifest_json TEXT NOT NULL)");
+            exec("PRAGMA user_version=5");
             exec("UPDATE tasks SET recovery_required=1 WHERE status IN ('ASSIGNED','RUNNING')");
             exec("COMMIT");
         } catch (...) { exec("ROLLBACK"); throw; }
@@ -150,21 +167,56 @@ nlohmann::json StateStore::statusCounts() const {
     return result;
 }
 
+void StateStore::publishDailyPlan(const nlohmann::json& manifest) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto day=manifest.at("date").get<std::string>(), body=manifest.dump();
+    exec("BEGIN IMMEDIATE");
+    try{
+        Statement insert(db_,"INSERT OR IGNORE INTO daily_plans VALUES(?,?)");
+        insert.text(1,day);insert.text(2,body);insert.run();
+        Statement query(db_,"SELECT manifest_json FROM daily_plans WHERE day=?");query.text(1,day);
+        check(sqlite3_step(query.value),db_);
+        if(column(query.value,0)!=body)throw std::invalid_argument("daily plan already published; resume saved Clock plan");
+        Statement batch(db_,"INSERT OR IGNORE INTO batches(batch_id) VALUES(?)");
+        for(const auto& item:manifest.at("batches")){batch.text(1,item.at("batch_id").get<std::string>());batch.run();batch.reset();}
+        exec("COMMIT");
+    }catch(...){exec("ROLLBACK");throw;}
+}
+bool StateStore::hasBatch(const std::string& id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statement query(db_,"SELECT 1 FROM batches WHERE batch_id=?");query.text(1,id);
+    const auto step=sqlite3_step(query.value);if(step==SQLITE_DONE)return false;
+    check(step,db_);return true;
+}
+
+nlohmann::json StateStore::dailyPlan(const std::string& day) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statement query(db_,"SELECT manifest_json FROM daily_plans WHERE day=?");query.text(1,day);
+    const auto step=sqlite3_step(query.value);if(step==SQLITE_DONE)return nullptr;
+    check(step,db_);return nlohmann::json::parse(column(query.value,0));
+}
+
 std::vector<PersistedTask> StateStore::loadTasks(TaskId id, bool active_only,const std::string& batch_id) const {
     std::vector<PersistedTask> result;
     visitTasks([&](Task&& task,uint64_t sequence){result.push_back({std::move(task),sequence});},id,active_only,batch_id);
     return result;
 }
 
-void StateStore::visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,TaskId id,bool active_only,const std::string& batch_id) const {
+void StateStore::visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,TaskId id,bool active_only,const std::string& batch_id,const std::vector<std::string>& dates) const {
     std::lock_guard<std::mutex> lock(mutex_);
     std::string sql="SELECT task_id,task_type,target,revision,priority,status,payload_json,execution_json,COALESCE(worker_id,''),retry_count,queue_sequence,COALESCE(run_id,''),recovery_required,created_at_ms,COALESCE(started_at_ms,0),COALESCE(finished_at_ms,0) FROM tasks WHERE 1=1";
     if(id)sql+=" AND task_id=?";
     if(active_only)sql+=" AND status IN ('PENDING','QUEUED','ASSIGNED','RUNNING')";
     if(!batch_id.empty())sql+=" AND batch_id=?";
+    if(!dates.empty()){
+        sql+=" AND task_id IN (SELECT task_id FROM task_query_index WHERE day IN (";
+        for(size_t i=0;i<dates.size();++i)sql+=i?",?":"?";
+        sql+="))";
+    }
     sql+=" ORDER BY task_id";Statement rows(db_,sql.c_str());int parameter=1;
     if(id)rows.number(parameter++,checkedId(id));
-    if(!batch_id.empty())rows.text(parameter,batch_id);
+    if(!batch_id.empty())rows.text(parameter++,batch_id);
+    for(const auto& day:dates)rows.text(parameter++,day);
     while (true) {
         int step = sqlite3_step(rows.value);
         if (step == SQLITE_DONE) break;
@@ -186,6 +238,41 @@ void StateStore::visitTasks(const std::function<void(Task&&,uint64_t)>& visitor,
                      fromMillis(sqlite3_column_int64(rows.value, 15)));
         visitor(std::move(task), sequence);
     }
+}
+
+uint64_t StateStore::excludedRegressionCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statement query(db_,"SELECT COUNT(*) FROM task_query_index WHERE classified=0 AND has_case=1");
+    check(sqlite3_step(query.value),db_);return static_cast<uint64_t>(sqlite3_column_int64(query.value,0));
+}
+
+std::vector<TaskGroupSnapshot> StateStore::taskGroups(const std::string& target,const std::string& revision,const std::string& batch_id) const {
+    std::map<std::string,nlohmann::json> groups;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::string sql="SELECT COALESCE(t.batch_id,''),CASE WHEN t.batch_id IS NULL THEN t.task_id ELSE 0 END,MAX(t.task_id),MIN(t.created_at_ms),t.status,q.outcome,COUNT(*) FROM tasks t JOIN task_query_index q ON q.task_id=t.task_id WHERE 1=1";
+        if(!target.empty())sql+=" AND t.target=?";if(!revision.empty())sql+=" AND t.revision=?";if(!batch_id.empty())sql+=" AND t.batch_id=?";
+        sql+=" GROUP BY t.batch_id,CASE WHEN t.batch_id IS NULL THEN t.task_id ELSE 0 END,t.status,q.outcome";
+        Statement query(db_,sql.c_str());int p=1;
+        for(const auto* value:{&target,&revision,&batch_id})if(!value->empty())query.text(p++,*value);
+        for(;;){auto step=sqlite3_step(query.value);if(step==SQLITE_DONE)break;check(step,db_);
+            const auto batch=column(query.value,0);const auto key=batch.empty()?"single:"+std::to_string(sqlite3_column_int64(query.value,1)):"batch:"+batch;
+            auto& group=groups[key];const auto id=static_cast<TaskId>(sqlite3_column_int64(query.value,2));const auto created=sqlite3_column_int64(query.value,3);
+            if(group.is_null())group={{"id",id},{"created",created},{"counts",nlohmann::json::object()},{"outcomes",nlohmann::json::object()},{"total",0}};
+            group["id"]=std::max(group["id"].get<TaskId>(),id);group["created"]=std::min(group["created"].get<int64_t>(),static_cast<int64_t>(created));
+            const auto n=static_cast<uint64_t>(sqlite3_column_int64(query.value,6));
+            for(const auto& bucket:{std::make_pair("counts",column(query.value,4)),std::make_pair("outcomes",column(query.value,5))})
+                group[bucket.first][bucket.second]=group[bucket.first].value(bucket.second,uint64_t(0))+n;
+            group["total"]=group["total"].get<uint64_t>()+n;
+        }
+    }
+    std::vector<TaskGroupSnapshot> result;result.reserve(groups.size());
+    // Scheduler holds its mutation lock across this operation: representatives
+    // and aggregated counters come from the same authoritative task state.
+    for(const auto& pair:groups){const auto& g=pair.second;auto row=loadTasks(g["id"].get<TaskId>());
+        if(row.size()!=1)throw std::runtime_error("task group representative missing");
+        result.push_back({std::move(row.front().task),{{"counts",g["counts"]},{"outcomes",g["outcomes"]},{"total",g["total"]}},g["created"].get<int64_t>()});}
+    return result;
 }
 
 std::vector<std::string> StateStore::loadStoppedBatches() const {
@@ -252,6 +339,7 @@ void StateStore::save(const std::vector<Task>& tasks,
         Statement run_insert(db_, "INSERT OR IGNORE INTO task_runs(run_id,task_id,attempt_no,worker_id,status,assigned_at_ms) VALUES(?,?,(SELECT COALESCE(MAX(attempt_no),0)+1 FROM task_runs WHERE task_id=?),?,?,?)");
         Statement run_update(db_, "UPDATE task_runs SET status=?,started_at_ms=?,finished_at_ms=?,execution_json=? WHERE run_id=?");
         Statement submit(db_, "INSERT INTO submission_keys(submission_key,request_json,task_id) VALUES(?,?,?)");
+        Statement query_index(db_,"INSERT OR REPLACE INTO task_query_index VALUES(?,?,?,?,?,?,?)");
         if (stopped_batch) {
             batch.text(1, *stopped_batch); batch.run(); batch.reset();
             stop.text(1, *stopped_batch); stop.run();
@@ -283,6 +371,7 @@ void StateStore::save(const std::vector<Task>& tasks,
             };
             bind(insert, 1, true); insert.run(); insert.reset();
             bind(update, 1, false); update.number(17, checkedId(task.getId())); update.run(); update.reset();
+            bindQueryIndex(query_index,task);
             if (!task.getRunId().empty() &&
                 (run_status_override || !task.getWorkerId().empty())) {
                 run_insert.text(1, task.getRunId());

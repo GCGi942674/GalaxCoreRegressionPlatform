@@ -9,6 +9,7 @@
 #include "regression/RegressionService.h"
 #include "progress/ProgressService.h"
 #include "protocol/ApiQueries.h"
+#include "protocol/DailyPlan.h"
 #include "Logging.h"
 #include <chrono>
 #include "config/Config.h"
@@ -16,6 +17,7 @@
 #include <random>
 #include <sstream>
 #include <limits>
+#include <map>
 
 namespace {
 const std::string& serverInstanceId() {
@@ -46,7 +48,10 @@ bool batchRequest(const nlohmann::json& data) {
            data["batch_id"].get<std::string>().size() <= 128;
 }
 nlohmann::json executionSummary(const std::string& message, GCRP::TaskStatus status) noexcept {
-    if (message.empty() || message.size() > 8192) return nullptr;
+    // Legacy Workers send the full result, including paths/argv. Bound by the
+    // protocol frame, then bound each extracted field; don't discard PASS just
+    // because unrelated diagnostic metadata exceeds the summary's size.
+    if (message.empty() || message.size() > 1024 * 1024) return nullptr;
     try {
         const auto source = nlohmann::json::parse(message, nullptr, false);
         if (!source.is_object()) return nullptr;
@@ -122,6 +127,77 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
     ProtocolMessage response;
 
     switch (request.type) {
+        case MessageType::PUBLISH_DAILY_PLAN: {
+            try {
+                Api::validateDailyPlan(request.data);
+                scheduler_.publishDailyPlan(request.data);
+                return buildResponse(request,ResponseCode::OK,"ok",{{"published",true}});
+            }catch(const std::invalid_argument& e){
+                return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());
+            }
+        }
+        case MessageType::QUERY_DAILY_PLAN: {
+            try {
+                Api::validate(request.data,{"date","offset","limit"});
+                const auto day=Api::text(request.data,"date",10);
+                if(!validQueryDate(day))throw std::invalid_argument("invalid date");
+                const auto count=Api::limit(request.data);
+                uint64_t offset=0;
+                if(request.data.contains("offset")){
+                    if(!request.data["offset"].is_number_unsigned())throw std::invalid_argument("invalid offset");
+                    offset=request.data["offset"].get<uint64_t>();
+                }
+                auto plan=scheduler_.dailyPlan(day);
+                if(plan.is_null())return buildResponse(request,ResponseCode::OK,"ok",
+                    {{"date",day},{"plan_available",false},{"items",nlohmann::json::array()},
+                     {"note","No published plan: Clock may not have run, or this is legacy history"}});
+                auto items=nlohmann::json::array();
+                const auto& batches=plan["batches"];
+                std::map<std::string,nlohmann::json> counters;
+                std::vector<std::tuple<uint64_t,std::string,std::string>> finished_runs;
+                for(size_t i=std::min<uint64_t>(offset,batches.size());i<batches.size()&&items.size()<count;++i){
+                    items.push_back(batches[i]);counters[batches[i]["batch_id"].get<std::string>()]=
+                        {{"submitted",0},{"active",0},{"finished",0},{"cancelled",0},{"logs_verified",0},{"logs_expired",0}};
+                }
+                const auto generation=scheduler_.visitTasks([&](const Task& task){
+                    if(taskContext(task,"source")!="scheduled"||taskContext(task,"date")!=day)return;
+                    auto it=counters.find(taskContext(task,"batch_id"));if(it==counters.end())return;
+                    auto& c=it->second;auto add=[&](const char* key){c[key]=c[key].get<uint64_t>()+1;};add("submitted");
+                    const auto status=task.getStatus();
+                    if(status==TaskStatus::CANCELLED)add("cancelled");
+                    else if(status==TaskStatus::SUCCEEDED||status==TaskStatus::FAILED||status==TaskStatus::TIMEOUT){
+                        add("finished");
+                        if(!task.getRunId().empty())finished_runs.emplace_back(task.getId(),task.getRunId(),it->first);
+                    }else add("active");
+                }, "", {day});
+                // Never do filesystem I/O while the scheduler snapshot lock is held.
+                // Execution counters share a generation; archive receipts are live observations.
+                for(const auto& run:finished_runs){
+                    const auto state=log_archive_.list(std::get<0>(run),std::get<1>(run)).value("archive_state",std::string());
+                    auto& c=counters.at(std::get<2>(run));
+                    if(state=="SERVER_VERIFIED"||state=="LOCAL_CLEANED")c["logs_verified"]=c["logs_verified"].get<uint64_t>()+1;
+                    if(state=="EXPIRED")c["logs_expired"]=c["logs_expired"].get<uint64_t>()+1;
+                }
+                bool all_complete=true;
+                for(auto& item:items){
+                    const auto id=item["batch_id"].get<std::string>();const auto& c=counters.at(id);
+                    for(auto it=c.begin();it!=c.end();++it)item[it.key()]=it.value();
+                    const auto planned=item["planned"].get<uint64_t>(), submitted=item["submitted"].get<uint64_t>();
+                    item["not_submitted"]=planned>submitted?planned-submitted:0;
+                    const bool stopped=scheduler_.isBatchStopped(id),idle=item["active"]==0;
+                    item["stop_requested"]=stopped;
+                    item["complete"]=submitted==planned&&idle;
+                    item["state"]=submitted>planned?"COUNT_MISMATCH":stopped?(idle?"STOPPED":"STOPPING"):
+                        submitted==0?"NOT_SUBMITTED":submitted<planned?"PARTIALLY_SUBMITTED":!idle?"RUNNING":"COMPLETE";
+                    all_complete=all_complete&&item["complete"].get<bool>();
+                }
+                const bool more=offset<batches.size()&&batches.size()-offset>items.size();
+                return buildResponse(request,ResponseCode::OK,"ok",{{"date",day},{"plan_available",true},
+                    {"suite_id",plan["suite_id"]},{"plan_sha256",plan["plan_sha256"]},{"items",items},
+                    {"total",batches.size()},{"has_more",more},{"next_offset",more?nlohmann::json(offset+items.size()):nlohmann::json(nullptr)},
+                    {"page_complete",all_complete},{"snapshot_generation",generation}});
+            }catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
+        }
         case MessageType::CONTROL_WORKERS: {
             // Protocol roles are not authenticated identities. Until real admin
             // authorization exists, deny every remote mutation before inspecting
@@ -130,12 +206,14 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 "remote worker administration disabled until authentication is implemented");
         }
         case MessageType::LOG_APPEND:
+        case MessageType::LOG_STATE:
         case MessageType::QUERY_LOGS:
         case MessageType::READ_LOG: {
             const auto& d = request.data;
             const bool upload = request.type == MessageType::LOG_APPEND;
             const bool read = request.type == MessageType::READ_LOG;
-            const size_t expected = upload ? 7 : read ? 5 : 2;
+            const bool state = request.type == MessageType::LOG_STATE;
+            const size_t expected = state?4:upload ? (d.contains("sha256") ? 8 : 7) : read ? 5 : 2;
             if (!d.is_object() || d.size() != expected ||
                 !d.contains("task_id") || !d["task_id"].is_number_unsigned() ||
                 d["task_id"].get<uint64_t>() == 0 ||
@@ -149,6 +227,11 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
             const auto owner = scheduler_.archiveOwner(task_id, run_id);
             if (!owner) return buildResponse(request, ResponseCode::INVALID_STATE, "run is not finished");
             try {
+                if(state){
+                    if(!d.contains("worker_id")||d["worker_id"]!=*owner||!d.contains("state"))
+                        return buildResponse(request,ResponseCode::INVALID_REQUEST,"invalid log state owner");
+                    return buildResponse(request,ResponseCode::OK,"ok",log_archive_.reportState(task_id,run_id,d["state"]));
+                }
                 if (!upload && !read)
                     return buildResponse(request, ResponseCode::OK, "ok",
                                          log_archive_.list(task_id, run_id));
@@ -160,7 +243,7 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 const auto offset = d["offset"].get<uint64_t>();
                 if (read) {
                     if (!d.contains("limit") || !d["limit"].is_number_unsigned() ||
-                        d["limit"].get<uint64_t>() < 1 || d["limit"].get<uint64_t>() > 16384)
+                        d["limit"].get<uint64_t>() < 1 || d["limit"].get<uint64_t>() > 131072)
                         return buildResponse(request, ResponseCode::INVALID_REQUEST, "invalid log read limit");
                     return buildResponse(request, ResponseCode::OK, "ok", log_archive_.read(
                         task_id, run_id, name, offset, d["limit"].get<size_t>()));
@@ -168,11 +251,13 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 if (!d.contains("worker_id") || !d["worker_id"].is_string() ||
                     *owner != d["worker_id"].get<std::string>() ||
                     !d.contains("data_hex") || !d["data_hex"].is_string() ||
-                    !d.contains("complete") || !d["complete"].is_boolean())
+                    !d.contains("complete") || !d["complete"].is_boolean() ||
+                    (d.contains("sha256") && (!d["sha256"].is_string() ||
+                        d["sha256"].get<std::string>().size()!=64)))
                     return buildResponse(request, ResponseCode::INVALID_REQUEST, "invalid log upload");
                 return buildResponse(request, ResponseCode::OK, "ok", log_archive_.append(
                     task_id, run_id, name, offset, d["data_hex"].get<std::string>(),
-                    d["complete"].get<bool>()));
+                    d["complete"].get<bool>(),d.value("sha256",std::string{})));
             } catch (const std::invalid_argument& error) {
                 return buildResponse(request, ResponseCode::INVALID_REQUEST, error.what());
             }

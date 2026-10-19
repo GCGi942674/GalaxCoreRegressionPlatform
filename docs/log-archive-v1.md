@@ -12,16 +12,35 @@ failure is visible in Worker output and does not change task PASS/FAIL/TIMEOUT.
 The archive accepts both the current and persisted older finished run_id values
 for a task, but only from that run's Worker connection.
 
-The first supported evidence set is `stdout.log`, `stderr.log`, `result.env`
-(when present), `result.json`, `flow_config` (when present), and the bounded
+The supported evidence set is `stdout.log`, `stderr.log`, `result.env`
+(when present), `result.json`, `flow_config` (when present), and the full
 `evidence/run` copy (`evidence.run` in the archive). It also captures the
 namespace-isolated vivado_runner `logs/run.log` (`runner.log`) and the single
 case `status/.../run.log` (`case-run.log`) before slot cleanup. This captures
 run.sh output and core runner/case logs on success and failure. Other tool-
 specific stage files and full-text search are not yet included. Each file is
-limited to 1 GiB; skipped oversized files are reported by the Worker.
-A content SHA-256 manifest and per-stage artifact inventory are not part of
-this first version; do not treat this archive as a forensic integrity proof.
+limited to 1 GiB. Oversized files block cleanup of that task's local logs and
+remain protected by the upload outbox; manual transfer is required.
+
+## Verified upload and local cleanup
+
+After upload, Worker sends each file's size and SHA-256. Server reads back its
+stored bytes, verifies the hash, syncs the file and completion marker, and returns
+`verified_sha256`. Slow verification keeps Worker heartbeats active. All files
+must be confirmed before cleanup starts.
+
+Worker durably saves the receipts in its pending outbox and writes `archived.json`
+in the task output. Only then does it unlink known task log/flow/result files.
+Interrupted cleanup resumes idempotently; a lost verification ACK, changed source,
+old Server, upload failure or oversized file preserves the local logs. Unknown
+files, ZIPs, SVN copies, service logs and recovery journals are not deleted by
+this operation. Server retains its archives for 30 days; a successful verification
+refreshes that retention window before Worker cleanup is authorized.
+
+Raw run evidence is copied in full, not just its first 8 MiB. `evidence.json`
+records size, SHA-256 and completeness. Only a run created/changed by this launched
+execution is eligible; pre-clean failure cannot archive the previous task's run
+as current evidence. SHA-256 provides transfer integrity, not authentication.
 
 To inspect a completed task, get its `run_id` from `query TASK_ID`, then:
 
@@ -37,10 +56,42 @@ by the requested task. Worker writes require its bound connection identity.
 These role checks are **not authentication**: use the existing trusted-LAN
 deployment boundary; do not expose this port to untrusted clients.
 
-No schema migration is needed: run ownership is looked up from existing
+No log-ownership migration is needed: run ownership is looked up from existing
 `task_runs`; archive bytes live in the configured directory. Back up that
 directory together with SQLite if log retention matters. Deleting a task is
-not implemented in this version.
+not implemented in this version. The accompanying task-query optimization does
+migrate the query index and daily plan registry to schema v5; see production-hardening.md.
+
+## Observable archival lifecycle and downloads
+
+Worker registration replies advertise `archive_lifecycle_v1`. A new Worker uses
+the bound Worker-only `log_state` operation to announce its exact allowlisted
+file set before upload, then acknowledges local cleanup after it actually occurs.
+The cleanup ACK is retried from the durable outbox if disconnected; it does not
+repeat task execution or discard other files. Old Workers still upload normally,
+but missing file-set or cleanup confirmation must not be inferred as success.
+
+`query_logs.archive_state` is NOT_REPORTED, UPLOADING, UPLOADED_UNVERIFIED,
+SERVER_VERIFIED, LOCAL_CLEANED or EXPIRED. NOT_REPORTED is deliberately ambiguous:
+there is no proof of upload or expiration. EXPIRED requires the retention cleaner's
+small durable tombstone. Retention removes log bytes, not that metadata. Per-file
+`sha256` and `verified` come from fsynced Server receipts, not Worker assertions.
+All files announced in the set must be verified before SERVER_VERIFIED; this is
+transfer completeness, not proof that the runner generated every imaginable file.
+Check evidence.json for raw run capture completeness.
+
+Client read pages now allow 1..131072 bytes (uploads remain 16 KiB).
+Qt downloads are disk-streamed up to the archive's 1 GiB per-file limit. On network
+failure, choose the SAME destination to resume its .gcrp-part file. Matching
+Task/Run/name/digest metadata and a local lock are required; the prefix is rehashed.
+The complete SHA-256 must match before the original destination is atomically
+replaced. A different identity, corrupted content or disk-full error preserves
+the destination and temporary evidence; inspect stale partial files explicitly.
+Final publication temporarily needs space for both the partial and final file.
+Legacy files without a Server SHA-256 receipt can still be downloaded after an
+explicit warning, using a fresh full transfer with no resume. The GUI never
+labels those downloads verified or authorizes any Worker deletion from them.
+Files above 1 GiB still require manual transfer and block Worker task-log cleanup.
 
 ## 30-day log retention
 

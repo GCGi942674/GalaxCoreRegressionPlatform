@@ -2,6 +2,7 @@
 #define GCRP_SCHEDULER_H
 
 #include "task/Task.h"
+#include "task/TaskQuery.h"
 #include "task/TaskStatus.h"
 #include "worker/WorkerManager.h"
 #include "worker/Worker.h"
@@ -14,6 +15,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <functional>
+#include <limits>
 
 namespace GCRP {
 class WorkerDispatcher;
@@ -33,7 +35,8 @@ struct BatchSnapshot {
 
 class Scheduler {
 public:
-    explicit Scheduler(WorkerManager& worker_manager);
+    explicit Scheduler(WorkerManager& worker_manager,
+                       size_t max_running_tasks = std::numeric_limits<size_t>::max());
     void restoreFrom(StateStore& store);
     TaskId nextTaskId() const;
     void holdWorker(const WorkerId& worker_id);
@@ -67,7 +70,13 @@ public:
     std::pair<uint64_t, std::vector<Task>> taskSnapshot() const;
     uint64_t taskGeneration() const;
     nlohmann::json statusCounts() const;
-    uint64_t visitTasks(const std::function<void(const Task&)>& visitor,const std::string& batch_id="") const;
+    void publishDailyPlan(const nlohmann::json& manifest);
+    nlohmann::json dailyPlan(const std::string& day) const;
+    uint64_t visitTasks(const std::function<void(const Task&)>& visitor,const std::string& batch_id="",
+                        const std::vector<std::string>& dates={}) const;
+    std::optional<std::pair<uint64_t,std::vector<TaskGroupSnapshot>>> taskGroups(
+        const std::string& target,const std::string& revision,const std::string& batch_id) const;
+    uint64_t excludedRegressionCount() const;
     std::vector<Task> getTasksByStatus(TaskStatus status) const;
 
     Scheduler(const Scheduler&) = delete;
@@ -88,6 +97,7 @@ private:
     };
 
     WorkerManager& worker_manager_;
+    size_t max_running_tasks_;
     std::unordered_map<TaskId, Task> tasks_;
     struct TaskQueue : std::priority_queue<QueuedTaskInfo, std::vector<QueuedTaskInfo>, std::greater<QueuedTaskInfo>> {
         void reserve(size_t count) {
@@ -98,6 +108,7 @@ private:
     TaskQueue task_queue_;
     std::unordered_set<TaskId> dispatching_;
     std::unordered_set<std::string> stopped_batches_;
+    std::unordered_map<std::string,nlohmann::json> daily_plans_;
     std::unordered_set<std::string> quarantined_workers_;
     std::unordered_set<std::string> reconciling_workers_;
     StateStore* store_{nullptr};

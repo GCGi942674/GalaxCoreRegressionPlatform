@@ -449,6 +449,44 @@ class PJtestAdapter:
                 raise AdapterError("invalid_result") from error
         return result
 
+    @staticmethod
+    def _run_identity(path):
+        if path.is_symlink() or not path.is_file():
+            return None
+        value = path.stat()
+        return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+
+    def _capture_run(self, case, directory, baseline, launched):
+        source = case.parent / 'run'
+        current = self._run_identity(source)
+        info = dict(captured=False, complete=False, reason='execution_not_started')
+        if launched:
+            info['reason'] = 'run_not_created_or_changed_this_execution'
+            if current is not None and current != baseline:
+                evidence = directory / 'evidence'
+                evidence.mkdir(exist_ok=True)
+                digest = hashlib.sha256()
+                size = 0
+                heartbeat_at = time.monotonic()
+                with source.open('rb') as src, (evidence / 'run').open('xb') as dst:
+                    while True:
+                        block = src.read(1024 * 1024)
+                        if not block:
+                            break
+                        dst.write(block)
+                        digest.update(block)
+                        size += len(block)
+                        if time.monotonic() - heartbeat_at >= 1:
+                            self.executor.heartbeat()
+                            heartbeat_at = time.monotonic()
+                if self._run_identity(source) != current or size != current[2]:
+                    raise AdapterError('run changed while collecting evidence')
+                info = dict(captured=True, complete=True, truncated=False, source_bytes=size,
+                            captured_bytes=size, sha256=digest.hexdigest(), reason='fresh_execution_run',
+                            upload_supported=size <= 1024 ** 3)
+        (directory / 'evidence.json').write_text(json.dumps(info, indent=2), encoding='utf-8')
+        return info
+
     def execute(self, task, directory):
         if not self.healthy:
             raise AdapterError("worker quarantined after cleanup failure")
@@ -470,6 +508,8 @@ class PJtestAdapter:
         flow_original = None
         flow_restore_needed = False
         config_path = None
+        launched = False
+        run_before = None
         with (directory / "stdout.log").open("xb") as output, (directory / "stderr.log").open("xb") as err:
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -518,11 +558,14 @@ class PJtestAdapter:
                 selected = root / "vivado_runner/runtime/workspaces" / namespace / "status" / case.parent.relative_to(root) / "result.env"
                 if selected.exists():
                     raise AdapterError("result existed before execution")
+                run_before = self._run_identity(case.parent / 'run')
                 argv = ["bash", str(root / "run.sh"), str(case), "--timeout",
                         str(task["payload"]["timeout_seconds"]), "--bg", "1",
                         "--galaxcore", str(binary), "--flow-config", str(config_path)]
                 result["argv"] = argv
                 def record_start(pid):
+                    nonlocal launched
+                    launched = True
                     result["pid"] = pid
                     (directory / "pid").write_text(str(pid) + "\n")
                     (directory / "execution.json").write_text(json.dumps(result, indent=2))
@@ -564,13 +607,13 @@ class PJtestAdapter:
                 try:
                     if prepared and self.executor.safe:
                         # Retain bounded diagnostic evidence before destructive cleanup.
-                        evidence = directory / "evidence"
-                        evidence.mkdir()
                         case_run = self.work_root / task["payload"]["case"]
-                        for name, path in (("run", case_run.parent / "run"),):
-                            if path.is_file() and not path.is_symlink():
-                                with path.open("rb") as src, (evidence / name).open("xb") as dst:
-                                    dst.write(src.read(8 * 1024 * 1024))
+                        capture_failed = False
+                        try:
+                            result['evidence_capture'] = self._capture_run(case_run, directory, run_before, launched)
+                        except (OSError, AdapterError) as error:
+                            capture_failed = True
+                            result['evidence_capture'] = dict(captured=False, complete=False, reason=str(error)[:256])
                         # The randomized namespace isolates this run's runner
                         # logs from other cases sharing the SVN checkout.
                         namespace = result.get("namespace")
@@ -591,7 +634,8 @@ class PJtestAdapter:
                                 except OSError as error:
                                     print("[WORKER] runner log capture failed: " + str(error), flush=True)
                         try:
-                            clean_code = self._run_clean(env, output)
+                            # Don't destroy the original run if evidence capture failed.
+                            clean_code = -1 if capture_failed else self._run_clean(env, output)
                         except Exception as error:
                             clean_code = -1
                             result["cleanup_error"] = str(error)[:160]

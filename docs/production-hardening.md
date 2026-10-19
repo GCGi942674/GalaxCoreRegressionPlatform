@@ -20,6 +20,10 @@ Queries are capped at 50 rows/page and 64 MiB total retained snapshot content.
 Snapshots expire after two minutes; up to eight coexist. Broad ungrouped queries
 must use batch filters if they exceed that budget.
 
+Clock pauses 30 seconds AFTER each Tasks.yaml batch, not after each testcase;
+five batches incur five pauses (about 150s), plus actual submission time.
+Shared ZIP production and last-50-version retention remain external.
+
 ## Persistence and evidence
 
 Only active records are restored into the scheduler hot set. Terminal records
@@ -33,11 +37,33 @@ This bounds resident history; it does not promise constant-time historical
 queries. Large regression/progress queries can still require scans and should
 be measured against real retained data before adding materialized indexes.
 
+Schema v4 adds a transactional task_query_index (outcome, scheduled date/template/
+source and classification). Existing v3 tasks/runs/IDs are preserved; the index is
+backfilled once. Parent counters now aggregate in SQL and parse one representative
+Task per parent; date comparisons load only their two indexed dates. The mutation
+lock remains for consistency. Version-progress queries still need further load
+measurement. Schema v5 additionally stores immutable daily plans (date + manifest).
+Existing v1-v4 IDs, tasks and results are preserved. Back up before upgrade:
+older binaries refuse a newer schema. For rollback,
+restore a backup into a separate path, never delete or downgrade a live DB.
+
+Server enforces scheduler.max_running_tasks across ASSIGNED/RUNNING reservations,
+including recovered attempts. Lowering the limit never kills active cases.
+
 The durable result outbox includes archive retry intent. Transient manifest-write
 failure does not silently lose the upload obligation or acknowledge completion.
 Legacy outboxes still replay. Log I/O uses two dedicated threads and a 64-job
 queue, outside the global session lock. ACKs still follow durable file sync.
 Half-close retains a pending-response lease. Overload fails explicitly for retry.
+
+Server re-reads and SHA-256 verifies every completed log, syncs it and its marker,
+then confirms. Worker durably saves the complete verified set before deleting
+known local task logs; interrupted cleanup resumes after restart. Failed or
+unsupported verification keeps local files. Service logs/journals are not removed.
+Raw run capture preserves the full fresh file, and compact business result DTOs
+do not lose PASS due to long diagnostic paths. Legacy full results remain accepted
+within the protocol frame limit. Unreferenced clean-UUID receipts may be reclaimed
+after one day; active recovery references are protected.
 
 ## Log rotation
 
@@ -76,6 +102,14 @@ overwrite an in-use DB or delete its WAL/journals to make a test pass.
 Update Server, GUI, Worker and Clock together; keep private role configs and
 runtime/SVN data. GUI startup remains `gcrp_gui --ip ADDRESS --port PORT`.
 No auto migration of old merged daily batches is attempted.
+
+Clock now publishes the entire saved daily plan before the first submit. Deploy
+Server before the updated Clock; an older Server rejects publication rather than
+silently submitting without completeness tracking. No additional config is needed.
+One published plan is immutable per date; resume the saved Clock state after an
+interruption instead of removing state and inventing a second daily run.
+Legacy dates without a plan are explicitly unknown, not considered fully complete.
+See daily-operations.md for GUI completeness, manual reruns and archive states.
 
 Authentication is deferred by explicit user choice. All remote Worker pause,
 resume and SVN-update requests are rejected by the Server before any state

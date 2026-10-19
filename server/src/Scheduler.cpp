@@ -34,10 +34,12 @@ void countStatus(BatchSnapshot& snapshot, TaskStatus status) {
 }
 }
 
-Scheduler::Scheduler(WorkerManager& worker_manager)
+Scheduler::Scheduler(WorkerManager& worker_manager, size_t max_running_tasks)
     : worker_manager_(worker_manager)
+    , max_running_tasks_(max_running_tasks)
     , next_sequence_(0)
 {
+    if (!max_running_tasks_) throw std::invalid_argument("max running tasks must be positive");
 }
 
 void Scheduler::holdWorker(const WorkerId& worker_id) {
@@ -252,6 +254,11 @@ std::optional<TaskId> Scheduler::submitTask(Task task, const std::string& submis
 
 std::vector<TaskAssignment> Scheduler::schedule() {
     std::lock_guard<std::mutex> lock(mutex_);
+    size_t active = 0;
+    for (const auto& row : tasks_)
+        if (row.second.getStatus() == TaskStatus::ASSIGNED ||
+            row.second.getStatus() == TaskStatus::RUNNING) ++active;
+    const size_t remaining = active >= max_running_tasks_ ? 0 : max_running_tasks_ - active;
     // Work on a copy: allocation failure must not consume the real queue.
     auto pending = task_queue_;
     pending.reserve(tasks_.size()); // also reserves allocation-free rollback space
@@ -263,7 +270,7 @@ std::vector<TaskAssignment> Scheduler::schedule() {
     std::string selected_after = last_selected_worker_;
     static_assert(std::is_nothrow_move_assignable<Task>::value, "task commit must not throw");
     try {
-        while (!pending.empty()) {
+        while (!pending.empty() && assignments.size() < remaining) {
             const auto queued = pending.top();
             auto it = tasks_.find(queued.task_id);
             if (it == tasks_.end() || it->second.getStatus() != TaskStatus::QUEUED) {
@@ -471,18 +478,22 @@ std::optional<BatchSnapshot> Scheduler::queryBatch(const std::string& batch_id) 
     std::lock_guard<std::mutex> lock(mutex_);
     BatchSnapshot snapshot;
     snapshot.stop_requested = stopped_batches_.count(batch_id) != 0;
-    if(store_){for(const auto& row:store_->loadTasks(0,false,batch_id))countStatus(snapshot,row.task.getStatus());return snapshot.total?std::make_optional(snapshot):std::nullopt;}
+    if(store_){for(const auto& row:store_->loadTasks(0,false,batch_id))countStatus(snapshot,row.task.getStatus());return snapshot.total||store_->hasBatch(batch_id)?std::make_optional(snapshot):std::nullopt;}
     for (const auto& entry : tasks_)
         if (const auto id = batchId(entry.second); id && *id == batch_id)
             countStatus(snapshot, entry.second.getStatus());
-    if (!snapshot.total) return std::nullopt;
+    if (!snapshot.total) {
+        bool planned=false;for(const auto& plan:daily_plans_)for(const auto& item:plan.second["batches"])if(item["batch_id"]==batch_id)planned=true;
+        if(!planned)return std::nullopt;
+    }
     return snapshot;
 }
 
 std::optional<BatchSnapshot> Scheduler::cancelBatch(const std::string& batch_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     bool found = false;
-    if(store_)found=!store_->loadTasks(0,false,batch_id).empty();
+    if(store_)found=store_->hasBatch(batch_id);
+    else for(const auto& plan:daily_plans_)for(const auto& item:plan.second["batches"])if(item["batch_id"]==batch_id)found=true;
     for (const auto& entry : tasks_)
         if (const auto id = batchId(entry.second); id && *id == batch_id) {
             found = true; break;
@@ -575,11 +586,41 @@ nlohmann::json Scheduler::statusCounts() const {
     auto result=nlohmann::json::object();for(const auto& task:tasks_){auto key=toString(task.second.getStatus());result[key]=result.value(key,uint64_t(0))+1;}return result;
 }
 
-uint64_t Scheduler::visitTasks(const std::function<void(const Task&)>& visitor,const std::string& batch_id) const {
+void Scheduler::publishDailyPlan(const nlohmann::json& manifest) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if(store_)store_->visitTasks([&](Task&& task,uint64_t){visitor(task);},0,false,batch_id);
-    else for(const auto& entry:tasks_){const auto id=batchId(entry.second);if(batch_id.empty()||(id&&*id==batch_id))visitor(entry.second);}
+    if(store_){store_->publishDailyPlan(manifest);return;}
+    const auto day=manifest.at("date").get<std::string>();
+    const auto it=daily_plans_.find(day);
+    if(it!=daily_plans_.end()&&it->second!=manifest)
+        throw std::invalid_argument("daily plan already published; resume saved Clock plan");
+    daily_plans_[day]=manifest;
+}
+nlohmann::json Scheduler::dailyPlan(const std::string& day) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(store_)return store_->dailyPlan(day);
+    const auto it=daily_plans_.find(day);return it==daily_plans_.end()?nlohmann::json(nullptr):it->second;
+}
+
+uint64_t Scheduler::visitTasks(const std::function<void(const Task&)>& visitor,const std::string& batch_id,const std::vector<std::string>& dates) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(store_)store_->visitTasks([&](Task&& task,uint64_t){visitor(task);},0,false,batch_id,dates);
+    else for(const auto& entry:tasks_){const auto id=batchId(entry.second);if((batch_id.empty()||(id&&*id==batch_id))&&
+        (dates.empty()||std::find(dates.begin(),dates.end(),taskContext(entry.second,"date"))!=dates.end()))visitor(entry.second);}
     return task_generation_;
+}
+
+std::optional<std::pair<uint64_t,std::vector<TaskGroupSnapshot>>> Scheduler::taskGroups(
+        const std::string& target,const std::string& revision,const std::string& batch_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(!store_)return std::nullopt;
+    return std::make_pair(task_generation_,store_->taskGroups(target,revision,batch_id));
+}
+uint64_t Scheduler::excludedRegressionCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);if(store_)return store_->excludedRegressionCount();
+    uint64_t n=0;for(const auto& row:tasks_){const auto& task=row.second;const auto& p=task.getPayload();
+        if(p.is_object()&&p.contains("case")&&p["case"].is_string()&&!p["case"].get_ref<const std::string&>().empty()&&
+            (taskContext(task,"source")!="scheduled"||taskContext(task,"template").empty()||!validQueryDate(taskContext(task,"date"))))++n;}
+    return n;
 }
 
 std::vector<Task> Scheduler::getTasksByStatus(TaskStatus status) const {

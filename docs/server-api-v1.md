@@ -37,14 +37,16 @@ rejected. Lists return empty arrays and null next cursors when exhausted.
 | query_capabilities | `{}` | api_version, protocol_version, operations, limits, features |
 | query_status | `{}` | task counters, workers, machines, regression_cache; legacy overview, not paginated |
 | query_task | task_id | task detail, including payload and available execution evidence |
-| query_tasks | optional status,target,revision,batch_id,limit,before_task_id | items,total,has_more,next_before_task_id,snapshot_generation; task_id descending |
+| query_tasks | optional status,target,revision,batch_id,view=groups,limit,before_task_id,snapshot_generation | bounded immutable query snapshot; task_id descending |
 | query_workers | optional machine_id,status,limit,after | items,total,has_more,next_after,snapshot_generation,inventory_scope; machine_id/slot_id/worker_id lexicographic |
 | query_batch | batch_id | batch counts, stop_requested,in_flight,complete; no task list |
 | query_regression | revision or case or batch_id required; optional flow,limit,before_task_id | filters,total,counts,items,has_more,next_before_task_id,snapshot_generation; task_id descending |
 | query_progress | target required; optional flow,limit,before_revision | target,flow,total_revisions,revisions,has_more,next_before_revision,snapshot_generation; numeric revision descending |
 | query_rollback | target,from_revision,to_revision required; optional flow,limit,after_task_id | total,items,has_more,next_after_task_id,snapshot_generation,from_available,to_available; current_task_id ascending |
 | query_logs | task_id,run_id | archived file names, sizes and completion flags for one finished run |
-| read_log | task_id,run_id,name,offset,limit (1..16384) | binary-safe hex page, next_offset, size and completion flag |
+| read_log | task_id,run_id,name,offset,limit (1..131072) | binary-safe hex page, next_offset, size, completion flag and verified sha256 when available |
+| query_daily_plan | date, optional offset (>=0),limit | plan_available, per-YAML-batch completeness and archive counters; original YAML order |
+| query_catalog | optional offset,limit,generation,refresh | Server testcase tree paths, recent/protected ZIP versions and flow templates |
 
 Default page size is 20; maximum 50 (progress maximum 20). Numeric cursors are
 positive uint64 integers, not strings or floats. Progress revisions are decimal
@@ -61,8 +63,10 @@ Worker `after` is the exact object returned in `next_after`:
 
 Task list summaries always contain task_id,task_type,status,target,revision,
 batch_id,worker_id,run_id,priority,retry_count. Unassigned identifiers are empty
-strings. Payload/execution are intentionally fetched through query_task to avoid
-oversized multi-row frames. Query_task retains its existing optional-field
+strings. Lists include bounded payload/context/execution summaries and timestamps;
+summary_truncated flags omitted oversized fields. query_task provides the full
+flow snapshot; list summaries must not be used to reconstruct an execution.
+Query_task retains its existing optional-field
 contract: run_id, execution and timestamps may be absent before available;
 recovery_required/recovery_reason are supplied when reconciliation is necessary.
 Never interpret absent execution as a successful case.
@@ -79,9 +83,13 @@ worker_inventory_persistent is false and inventory_scope is current_server_proce
 Each paginated endpoint reads one locked snapshot. Task-derived endpoints use the
 Scheduler generation; Worker queries use a separate registry generation (including
 heartbeats). Generations are only comparable within the same domain and
-server_instance_id. There is no retained cross-page snapshot: changes may alter
-counts/membership between pages. A GUI can restart pagination after a version
-change; it must not silently merge pages across Server restarts. Query_status is
+server_instance_id. query_tasks retains immutable query snapshots for two minutes,
+up to eight within a shared 64 MiB budget. Send snapshot_generation on later pages;
+expiration/eviction fails explicitly. Group view returns one representative with
+group_summary per parent, not one visible parent per testcase.
+Other queries can change counts/membership between pages. A GUI can restart
+pagination after a generation change; it must not silently merge pages across
+Server restarts. Query_status is
 a monitoring overview, not a transactionally consistent join of tasks and workers.
 
 Progress is **target scoped, not project scoped**. Existing manual submissions may
@@ -100,6 +108,13 @@ do not subtract them to infer durations when clocks are unsynchronized.
 - submit_task: task_type,target,revision, optional priority,payload,submission_key.
   Returns task_id. Reuse an identical submission_key for an explicitly supported
   idempotent submission; do not blindly retry arbitrary mutations.
+- publish_daily_plan: date,suite_id,plan_sha256,batches. Each batch contains
+  batch_id,template,name,revision,planned (1..100000; suite total <=100000,
+  at most 1000 batches). Immutable per date; exact replay is idempotent.
+  Published before any Clock testcase; schema v5 persists it across restart.
+- query_daily_plan counts scheduled tasks only. Complete requires exact planned
+  count with no active task; zero-record planned batches remain visible.
+  plan_available=false means unknown/legacy/not-published, never success.
 - cancel_task: task_id. Only PENDING/QUEUED can be cancelled. Running/assigned
   executions are not killed and their slots are not released prematurely.
 - cancel_batch: batch_id. Stops queued/pending cases and future submissions into
@@ -110,9 +125,13 @@ do not subtract them to infer durations when clocks are unsynchronized.
   task_id/run_id owned by that Worker. Each request carries at most 16 KiB of
   binary evidence encoded as hex. The server returns its durable next_offset
   for idempotent resume. Details and current evidence scope: log-archive-v1.md.
+- log_state: Worker-only, task_id,run_id,worker_id,state. State contains phase
+  (UPLOADING or LOCAL_CLEANED) and the exact allowlisted file-name array.
+  Local cleanup confirmation is accepted only after all expected files have
+  Server verification receipts. Registration advertises archive_lifecycle_v1.
 
-No GUI, remote process cancellation, remote machine power control, authentication,
-project identity migration or durable Worker inventory is implemented by P17.
+The Qt frontend is documented separately. Remote process cancellation, machine
+power control, authentication and durable Worker inventory remain unavailable.
 
 ## CLI and acceptance
 

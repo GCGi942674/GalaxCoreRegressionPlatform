@@ -22,5 +22,7 @@ int main(){return testMain([]{
         CHECK(restored.nextTaskId()==2201);CHECK(restored.getTask(1)->getStatus()==TaskStatus::CANCELLED);
         CHECK(restored.queryBatch("history")->cancelled==2200);CHECK(restored.cancelBatch("history")->total==2200);
         CHECK(restored.taskSnapshot().second.size()==2200);
+        Api::TaskListQuery persistedQuery;const auto groups=persistedQuery.query({{"view","groups"}},restored);
+        CHECK(groups["total"]==1);CHECK(groups["items"][0]["group_summary"]["counts"]["CANCELLED"]==2200);
     }std::filesystem::remove_all(path);
 });}

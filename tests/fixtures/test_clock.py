@@ -83,6 +83,28 @@ class ClockTests(unittest.TestCase):
             clock.build_plan(self.config)
         self.assertFalse((self.root / "protect_versions").exists())
 
+    def test_default_interval_is_per_yaml_batch_not_per_case(self):
+        case = self.work / 'cases/second/run.tcl'
+        case.parent.mkdir(parents=True)
+        case.write_text('# second case\n')
+        self.yaml.write_text(yaml.safe_dump({'tasks': [
+            {'template': 'route', 'target': str(self.work / 'cases')}
+            for _ in range(5)]}))
+        accepted = []
+        def reply(_, kind, data):
+            if kind == 'query_status':
+                return dict(pending=0, queued=0, assigned=0, running=0, total=0)
+            if kind == 'publish_daily_plan':
+                self.assertEqual([b['planned'] for b in data['batches']], [2] * 5)
+                return dict(published=True)
+            accepted.append(data['payload']['context']['batch_id'])
+            return dict(task_id=len(accepted))
+        with mock.patch.object(clock, 'request', side_effect=reply), mock.patch.object(clock.time, 'sleep') as sleep:
+            self.assertEqual(clock.run(self.config), 0)
+        self.assertEqual(len(accepted), 10)
+        self.assertEqual(len(set(accepted)), 5)
+        self.assertEqual([call[0][0] for call in sleep.call_args_list], [30] * 5)
+
     def test_submit_once_and_preserve_uncertain_attempt(self):
         calls = []
         def reply(_, kind, data):
@@ -93,6 +115,8 @@ class ClockTests(unittest.TestCase):
                 return {"status": "SUCCEEDED"}
             if kind == "query_batch":
                 return {"complete": True}
+            if kind == "publish_daily_plan":
+                return {"published": True}
             self.assertEqual(data["payload"]["spec_version"], 2)
             return {"task_id": 101}
         with mock.patch.object(clock, "request", side_effect=reply):
@@ -109,6 +133,8 @@ class ClockTests(unittest.TestCase):
         def lost_ack(_, kind, data):
             if kind == "query_status":
                 return {"pending": 0, "queued": 0, "assigned": 0, "running": 0, "total": 0}
+            if kind == "publish_daily_plan":
+                return {"published": True}
             replay_keys.append(data["submission_key"])
             raise TimeoutError("ack lost")
         with mock.patch.object(clock, "request", side_effect=lost_ack):
@@ -118,6 +144,8 @@ class ClockTests(unittest.TestCase):
         def recovered(_, kind, data):
             if kind == "query_status":
                 return {"pending": 0, "queued": 0, "assigned": 0, "running": 0, "total": 0}
+            if kind == "publish_daily_plan":
+                return {"published": True}
             replay_keys.append(data["submission_key"])
             return {"task_id": 102}
         with mock.patch.object(clock, "request", side_effect=recovered):
@@ -138,6 +166,8 @@ class ClockTests(unittest.TestCase):
                 return {"status": "SUCCEEDED"}
             if kind == "query_batch":
                 return {"complete": True}
+            if kind == "publish_daily_plan":
+                return {"published": True}
             submitted.append(data["payload"]["context"]["batch_id"])
             if len(submitted) == 2:
                 raise clock.BatchStopped("batch stopped")

@@ -80,8 +80,9 @@ void WorkerSession::handleRequest(const ProtocolMessage& request) {
         recovery_protocol_ = recovering;
         binding_handle_ = *handle;
         LOG_INFO(LogModule::WORKER, "worker registered: " + *worker_id_);
-        reply(request.request_id, ResponseCode::OK, "ok");
-
+        ProtocolMessage response;response.request_id=request.request_id;response.type=MessageType::RESPONSE;
+        response.data=DTO::toJson(DTO::Response{0,"ok",{{"archive_lifecycle_v1",true}}});
+        sendToConnection(encodeResponse(response));
         if (!recovering) scheduling_driver_.requestSchedule();
         return;
     }

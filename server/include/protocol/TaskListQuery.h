@@ -37,12 +37,26 @@ public:
             const auto status=text(input,"status",16),target=text(input,"target",128),revision=text(input,"revision",128),batch=text(input,"batch_id",128);
             if(!status.empty()&&!std::set<std::string>{"PENDING","QUEUED","ASSIGNED","RUNNING","SUCCEEDED","FAILED","TIMEOUT","CANCELLED"}.count(status))throw std::invalid_argument("unknown status");
             Json rows=Json::array();std::map<std::string,Json> groups;size_t retained=0;
-            const auto captured=scheduler.visitTasks([&](const Task& task){
+            auto rowOf=[](const Task& task){
+                const auto summary=taskListSummary(task);
+                Json row={{"task_id",task.getId()},{"task_type",toString(task.getType())},{"status",toString(task.getStatus())},{"target",task.getTarget()},{"revision",task.getRevision()},{"batch_id",taskContext(task,"batch_id")},{"worker_id",task.getWorkerId()},{"run_id",task.getRunId()},{"priority",task.getPriority()},{"retry_count",task.getRetryCount()}};
+                for(auto it=summary.begin();it!=summary.end();++it)row[it.key()]=it.value();return row;
+            };
+            uint64_t captured=0;
+            const auto sql_groups=view=="groups"?scheduler.taskGroups(target,revision,batch):std::nullopt;
+            if(sql_groups){
+                captured=sql_groups->first;
+                for(const auto& group:sql_groups->second){
+                    if(!status.empty()&&group.summary["counts"].value(status,uint64_t(0))==0)continue;
+                    auto row=rowOf(group.representative);row["created_at_ms"]=group.created_at_ms;row["group_summary"]=group.summary;
+                    retained+=row.dump().size();if(retained>budget_)throw std::invalid_argument("task query too broad; narrow filters");
+                    rows.push_back(std::move(row));
+                }
+            }else captured=scheduler.visitTasks([&](const Task& task){
                 const auto summary=taskListSummary(task);const auto context=summary.value("payload",Json::object()).value("context",Json::object());
                 const auto group=context.value("batch_id",std::string{});
                 if((!target.empty()&&task.getTarget()!=target)||(!revision.empty()&&task.getRevision()!=revision)||(!batch.empty()&&group!=batch))return;
-                Json row={{"task_id",task.getId()},{"task_type",toString(task.getType())},{"status",toString(task.getStatus())},{"target",task.getTarget()},{"revision",task.getRevision()},{"batch_id",group},{"worker_id",task.getWorkerId()},{"run_id",task.getRunId()},{"priority",task.getPriority()},{"retry_count",task.getRetryCount()}};
-                for(auto it=summary.begin();it!=summary.end();++it)row[it.key()]=it.value();
+                Json row=rowOf(task);
                 if(view=="groups"){
                     auto& parent=groups[group.empty()?"single-"+std::to_string(task.getId()):group];
                     if(parent.is_null()){retained+=row.dump().size()+512;if(retained>budget_)throw std::invalid_argument("task query too broad; narrow filters");parent={{"representative",row},{"counts",Json::object()},{"outcomes",Json::object()},{"total",0},{"created_at_ms",row["created_at_ms"]}};}

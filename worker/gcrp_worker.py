@@ -18,19 +18,38 @@ import tempfile
 import time
 import uuid
 from process_executor import ProcessExecutor
-from pjtest_adapter import PJtestAdapter
+from pjtest_adapter import PJtestAdapter, file_digest
 from runtime_config import load_config
-from recovery_journal import write_json, remove
+from recovery_journal import write_json, remove, sync_directory
 from log_retention import prune_worker_logs
 from maintenance import SlotMaintenance
+from slot_process import publish as publish_process
 
 MAX_FRAME = 1024 * 1024
 _SLOT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 _RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _LOG_NAMES = ("stdout.log", "stderr.log", "result.env", "result.json",
-              "flow_config", "evidence.run", "runner.log", "case-run.log")
+              "flow_config", "evidence.run", "runner.log", "case-run.log", "evidence.json")
 _LOG_CHUNK = 16384
 _LOG_LIMIT = 1024 * 1024 * 1024
+
+
+def result_summary(result):
+    """Wire DTO only. Full paths/payload/argv stay in archived result.json."""
+    summary = dict(status=result['status'])
+    for key in ('reason', 'case_status', 'case_reason'):
+        if isinstance(result.get(key), str):
+            summary[key] = result[key].encode('utf-8')[:256].decode('utf-8', 'ignore')
+    for key in ('case_ret_code', 'raw_exit_code', 'exit_code', 'pid'):
+        value = result.get(key)
+        if key == 'case_ret_code' and isinstance(value, str):
+            try:
+                value = int(value)
+            except ValueError:
+                continue
+        if type(value) is int and -1000000000 <= value <= 1000000000:
+            summary[key] = value
+    return summary
 
 
 class TransportError(ConnectionError):
@@ -68,6 +87,7 @@ class Worker:
         self.process = None
         self.next_reconnect = 0
         self.next_log_retry = 0
+        self.archive_lifecycle = False
         self.retention_days = getattr(args, "retention_days", 30)
         self.next_log_prune = 0
         self.draining = False
@@ -142,9 +162,10 @@ class Worker:
         except OSError as error:
             raise TransportError(str(error)) from error
         self.buffer.clear()
-        self.request("worker_register", dict(worker_id=self.args.worker_id,
+        registration = self.request("worker_register", dict(worker_id=self.args.worker_id,
                      hostname=socket.gethostname(), machine_id=self.args.machine_id,
                      slot_id=self.args.slot_id, slots=1, recovery_version=1, control_version=1))
+        self.archive_lifecycle = isinstance(registration, dict) and registration.get('archive_lifecycle_v1') is True
         self.draining = False
         self.acknowledge_drain()
         self.flush_report()
@@ -241,10 +262,9 @@ class Worker:
         for name in _LOG_NAMES:
             source = directory / "evidence" / "run" if name == "evidence.run" else directory / name
             if source.is_file() and not source.is_symlink():
-                if source.stat().st_size <= _LOG_LIMIT:
-                    files.append(name)
-                else:
-                    print("[WORKER] log too large for archive: " + name, flush=True)
+                files.append(name)
+                if source.stat().st_size > _LOG_LIMIT:
+                    print("[WORKER] log exceeds archive limit; preserve ALL local task logs: " + name, flush=True)
         if not files:
             return
         path = self.args.output / ("pending-logs-" + run_id + ".json")
@@ -254,8 +274,17 @@ class Worker:
             previous = json.loads(path.read_text(encoding="utf-8"))
             if (previous.get("task_id") != assignment["task_id"] or
                     previous.get("run_id") != run_id or previous.get("worker_id") != self.args.worker_id or
-                    previous.get("directory") != str(directory.resolve()) or previous.get("files") != files):
+                    previous.get("directory") != str(directory.resolve()) or
+                    not isinstance(previous.get('files'), list) or any(name not in _LOG_NAMES for name in previous['files'])):
                 raise RuntimeError("conflicting log outbox: " + str(path))
+            if previous['files'] != files:
+                if previous.get('cleanup_approved') is True:
+                    raise RuntimeError('verified archive file set changed; inspect before cleanup')
+                # An old Worker may have omitted an oversized file. Preserve it
+                # as an explicit pending obligation rather than lose the result
+                # replay or silently authorize partial local cleanup.
+                previous['files'] = [name for name in _LOG_NAMES if name in files or name in previous['files']]
+                write_json(path, previous)
             return
         write_json(path, dict(task_id=assignment["task_id"], run_id=run_id,
                               worker_id=self.args.worker_id, directory=str(directory.resolve()),
@@ -277,11 +306,18 @@ class Worker:
                     not isinstance(entry.get("files"), list) or
                     any(name not in _LOG_NAMES for name in entry["files"])):
                 raise RuntimeError("invalid log outbox: " + str(path))
+            if entry.get('cleanup_approved') is True:
+                self.cleanup_archived_logs(entry)
+                self.report_log_state(entry, 'LOCAL_CLEANED')
+                remove(path)
+                continue
+            self.report_log_state(entry, 'UPLOADING')
             for name in entry["files"]:
-                source = directory / "evidence" / "run" if name == "evidence.run" else directory / name
+                source = self.log_source(directory, name)
                 if source.is_symlink() or not source.is_file() or source.stat().st_size > _LOG_LIMIT:
                     raise RuntimeError("log source changed: " + str(source))
                 size = source.stat().st_size
+                digest = file_digest(source)
                 offset = 0
                 heartbeat_at = time.monotonic()
                 with source.open("rb") as stream:
@@ -306,7 +342,68 @@ class Worker:
                         if time.monotonic() - heartbeat_at >= 10:
                             self.request("worker_heartbeat", dict(worker_id=self.args.worker_id))
                             heartbeat_at = time.monotonic()
+                verified = self.request('log_append', dict(task_id=entry['task_id'], run_id=run_id,
+                    worker_id=self.args.worker_id, name=name, offset=size, data_hex='', complete=True,
+                    sha256=digest))
+                if (verified.get('complete') is not True or verified.get('next_offset') != size or
+                        verified.get('verified_sha256') != digest):
+                    raise RuntimeError('Server did not verify archive; local logs preserved')
+                entry.setdefault('verified_files', {})[name] = dict(size=size, sha256=digest)
+            # Persist the Server's verification receipts before deleting anything.
+            # A restart after a partial local cleanup resumes here idempotently.
+            entry['cleanup_approved'] = True
+            write_json(path, entry)
+            self.cleanup_archived_logs(entry)
+            self.report_log_state(entry, 'LOCAL_CLEANED')
             remove(path)
+
+    def report_log_state(self, entry, phase):
+        if not self.archive_lifecycle:
+            return
+        result = self.request('log_state', dict(task_id=entry['task_id'], run_id=entry['run_id'],
+            worker_id=self.args.worker_id, state=dict(phase=phase, files=entry['files'])))
+        if result.get('recorded') is not True:
+            raise RuntimeError('Server did not persist archive lifecycle state')
+
+    @staticmethod
+    def log_source(directory, name):
+        source = directory / 'evidence' / 'run' if name == 'evidence.run' else directory / name
+        if (name not in _LOG_NAMES or directory.is_symlink() or source.parent.is_symlink() or
+                source.is_symlink() or directory.resolve() not in source.resolve().parents):
+            raise RuntimeError('unsafe archive source: ' + str(source))
+        return source
+
+    def cleanup_archived_logs(self, entry):
+        directory = Path(entry['directory'])
+        verified = entry.get('verified_files', {})
+        if (directory.is_symlink() or not directory.is_dir() or
+                self.args.output.resolve() not in directory.resolve().parents or
+                not isinstance(verified, dict) or set(verified) != set(entry['files'])):
+            raise RuntimeError('invalid archive cleanup receipt; local files preserved')
+        # Validate the whole set before the first unlink. Never touch unknown
+        # files, ZIPs, SVN copies, journals, or sources changed since upload.
+        for name in entry['files']:
+            source = self.log_source(directory, name)
+            receipt = verified[name]
+            if (not isinstance(receipt, dict) or type(receipt.get('size')) is not int or
+                    not isinstance(receipt.get('sha256'), str) or
+                    not re.fullmatch(r'[0-9a-f]{64}', receipt['sha256'])):
+                raise RuntimeError('invalid verified file receipt')
+            if source.exists() and (not source.is_file() or source.stat().st_size != receipt['size'] or
+                                    file_digest(source) != receipt['sha256']):
+                raise RuntimeError('local log changed after upload; preserve ' + str(source))
+        write_json(directory / 'archived.json', dict(task_id=entry['task_id'], run_id=entry['run_id'],
+            worker_id=entry['worker_id'], verified_files=verified, server_verified=True))
+        for name in entry['files']:
+            source = self.log_source(directory, name)
+            if source.exists():
+                source.unlink()
+                sync_directory(source.parent)
+        evidence = directory / 'evidence'
+        if evidence.is_dir() and not evidence.is_symlink() and not any(evidence.iterdir()):
+            evidence.rmdir()
+            sync_directory(directory)
+        print('[WORKER] logs archived and SHA-256 verified; local task logs removed: ' + entry['run_id'], flush=True)
 
     def try_flush_logs(self):
         try:
@@ -363,23 +460,51 @@ class Worker:
 
     def _request(self, kind, data):
         self.sequence += 1
-        body = json.dumps(dict(version=1, type=kind, request_id=self.sequence,
+        request_id = self.sequence
+        body = json.dumps(dict(version=1, type=kind, request_id=request_id,
                                data=data)).encode()
         self.sock.sendall(struct.pack("!I", len(body)) + body)
-        deadline = time.monotonic() + 5
+        verifying = kind == 'log_append' and 'sha256' in data
+        deadline = time.monotonic() + (300 if verifying else 5)
+        heartbeat_at = time.monotonic() + 1
+        heartbeat_ids = set()
+        answer = None
         while True:
-            message = self.receive(deadline)
+            if verifying and answer is None and time.monotonic() >= heartbeat_at:
+                self.sequence += 1
+                heartbeat_ids.add(self.sequence)
+                heartbeat = json.dumps(dict(version=1, type='worker_heartbeat', request_id=self.sequence,
+                    data=dict(worker_id=self.args.worker_id))).encode()
+                self.sock.sendall(struct.pack('!I', len(heartbeat)) + heartbeat)
+                heartbeat_at = time.monotonic() + 1
+            try:
+                message = self.receive(min(deadline, heartbeat_at) if verifying and answer is None else deadline)
+            except TimeoutError:
+                if verifying and answer is None and time.monotonic() < deadline:
+                    continue
+                raise
             if message.get("type") == "task_assign":
                 self.assignment(message)
                 continue
-            if (message.get("type") != "response" or message["request_id"] != self.sequence
-                    or type(message["data"].get("code")) is not int):
+            if (message.get("type") != "response" or
+                    type(message["data"].get("code")) is not int):
                 raise RuntimeError("request rejected: " + repr(message)[:500])
+            if message['request_id'] in heartbeat_ids:
+                heartbeat_ids.remove(message['request_id'])
+                if message['data']['code'] != 0:
+                    raise ConnectionError('verification heartbeat rejected')
+                if answer is not None and not heartbeat_ids:
+                    return answer.get('result')
+                continue
+            if message['request_id'] != request_id:
+                raise RuntimeError('unexpected response identity')
             if message["data"]["code"] == 4:
                 raise ConnectionError("server temporarily unable to persist request")
             if message["data"]["code"] != 0:
                 raise RuntimeError("request rejected: " + repr(message)[:500])
-            return message["data"].get("result")
+            answer = message['data']
+            if not heartbeat_ids:
+                return answer.get('result')
 
     def stop_process(self):
         self.executor.stop()
@@ -426,7 +551,7 @@ class Worker:
         status = result["status"]
         self.acknowledge_drain()
         report = dict(task_id=task_id, worker_id=self.args.worker_id,
-                      status=status, message=json.dumps(result))
+                      status=status, message=json.dumps(result_summary(result)))
         if assignment.get("run_id"):
             report["run_id"] = assignment["run_id"]
         report["_archive"] = dict(assignment=assignment, directory=str(directory.resolve()))
@@ -452,6 +577,7 @@ class Worker:
             raise RuntimeError("another Worker owns this identity/output directory")
         root = Path(tempfile.mkdtemp(prefix="run-", dir=str(self.args.output)))
         try:
+            publish_process(self.args.output, self.args.worker_id, __file__)
             self.maintenance = SlotMaintenance(self.args.output, self.heartbeat)
             # Validate local exit evidence before touching a possibly live slot.
             if self.active_path().exists() and not self.pending_path().exists():

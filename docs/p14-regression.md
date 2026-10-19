@@ -30,9 +30,10 @@ Tasks are `ACTIVE`. A success lacking a case verdict is `UNKNOWN`, not `PASS`.
 The original `status`, `reason`, `case_status` and `case_reason` are retained in
 each history item where present.
 
-The view currently scans an in-memory Scheduler snapshot; the response is
-bounded, but query work is O(number of Tasks). P15 may add indexed/cache-backed
-reads after real query-volume measurements. In particular, this is not yet a
+Scheduled-date queries now filter through the SQLite query index before loading
+Task JSON; parent lists aggregate counters in SQL. Other broad revision/progress
+queries can still scan history, and the global mutation lock is not eliminated.
+Further optimization needs measured load. In particular, this is not yet a
 replacement for PJTest's log download, detailed attempt history, or matrix
 reports. Those require explicit data contracts and should not be inferred from
 one Task's latest execution summary. Neither `result.env` files nor entire

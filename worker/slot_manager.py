@@ -14,6 +14,7 @@ import time
 from recovery_journal import remove, write_json
 from runtime_config import load_config
 from slot_identity import machine_identity, migrate_legacy_slots, slot_names
+from slot_process import ExistingWorker
 
 
 VALID_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
@@ -65,6 +66,21 @@ class SlotManager:
         self.restart_after = {}
         self.stopping = False
         self.reload = False
+        # A killed Manager need not kill its Workers. Validate ALL survivors
+        # before starting/draining anything; don't pretend they are our children.
+        adopted = {}
+        try:
+            for slot in slot_names(128):
+                if self.output(slot).is_dir() and self.running_elsewhere(slot):
+                    adopted[slot] = self.existing_worker(slot)
+        except BaseException:
+            os.close(self.lock_fd)
+            raise
+        for slot, process in adopted.items():
+            self.children[slot] = (process, time.monotonic())
+            print('[MANAGER] adopted {} pid={}'.format(slot, process.pid), flush=True)
+            if slot not in self.desired:
+                self.drain(slot)
 
     def output(self, slot):
         return self.machine_root / slot
@@ -94,6 +110,9 @@ class SlotManager:
 
     def start(self, slot):
         if self.running_elsewhere(slot):
+            process = self.existing_worker(slot)
+            self.children[slot] = (process, time.monotonic())
+            print('[MANAGER] adopted {} pid={}'.format(slot, process.pid), flush=True)
             return
         output = self.output(slot)
         remove(output / '.drain')
@@ -105,6 +124,10 @@ class SlotManager:
         process = subprocess.Popen(args, close_fds=True)
         self.children[slot] = (process, time.monotonic())
         print('[MANAGER] started {} pid={}'.format(slot, process.pid), flush=True)
+
+    def existing_worker(self, slot):
+        return ExistingWorker(self.output(slot), self.worker_id(slot),
+            Path(__file__).with_name('gcrp_worker.py'), lambda: self.running_elsewhere(slot))
 
     def reload_config(self):
         config = load_config("worker")
@@ -195,7 +218,7 @@ def main():
     signal.signal(signal.SIGHUP, reload)
     try:
         manager.run()
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         print('[MANAGER] ' + str(error), file=sys.stderr)
         return 1
     return 0

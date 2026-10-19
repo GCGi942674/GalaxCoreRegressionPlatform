@@ -3,6 +3,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+from recovery_journal import sync_directory
 import re
 import shutil
 import time
@@ -73,6 +74,26 @@ def prune_worker_logs(output, days=30, now=None):
                 removed += 1
             if run.stat().st_mtime < cutoff and not any(run.iterdir()):
                 run.rmdir()
+        # Completion receipts outside run directories used to accumulate forever.
+        # Keep referenced receipts and a one-day safety margin for late guards.
+        referenced = set()
+        for pattern in ('active-*.json', 'pending-report-*.json'):
+            for journal in output.glob(pattern):
+                if journal.is_symlink():
+                    raise RuntimeError('unsafe receipt journal')
+                value = json.loads(journal.read_text(encoding='utf-8'))
+                if isinstance(value.get('receipt'), str):
+                    referenced.add(str(Path(value['receipt']).resolve()))
+        receipt_cutoff = (time.time() if now is None else now) - 86400
+        for receipt in output.glob('clean-*.json'):
+            if (receipt.is_symlink() or not receipt.is_file() or
+                    not re.fullmatch(r'clean-[0-9a-f]{32}\.json', receipt.name) or
+                    receipt.stat().st_mtime >= receipt_cutoff or str(receipt.resolve()) in referenced):
+                continue
+            value = json.loads(receipt.read_text(encoding='utf-8'))
+            if value == dict(clean=True, token=receipt.name):
+                receipt.unlink()
+                sync_directory(output)
     finally:
         os.close(fd)
     return removed

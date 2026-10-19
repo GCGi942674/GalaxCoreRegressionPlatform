@@ -97,5 +97,33 @@ int main() {
         assert(scheduler.getTask(5)->recoveryRequired());
         assert(scheduler.getTask(6)->getStatus() == TaskStatus::CANCELLED);
     }
+    {
+        StateStore store(db);WorkerManager workers;Scheduler capped(workers,1);capped.restoreFrom(store);
+        assert(workers.registerWorker("spare-slot","spare",1));
+        assert(capped.submitTask(Task(7,TaskType::REGRESSION,"waiting","18926")));
+        // A recovered ASSIGNED execution also consumes the global reservation.
+        assert(capped.schedule().empty());
+    }
+    {
+        sqlite3* legacy=nullptr;assert(sqlite3_open(db.c_str(),&legacy)==SQLITE_OK);
+        assert(sqlite3_exec(legacy,"DROP TABLE task_query_index; PRAGMA user_version=3",nullptr,nullptr,nullptr)==SQLITE_OK);
+        sqlite3_close(legacy);
+        StateStore upgraded(db);
+        auto groups=upgraded.taskGroups("","","batch-1");
+        assert(groups.size()==1&&groups[0].summary["total"]==2);
+        assert(groups[0].summary["counts"]["SUCCEEDED"]==1&&groups[0].summary["counts"]["CANCELLED"]==1);
+        auto old=upgraded.loadTasks(1);assert(old.size()==1&&old[0].task.getStatus()==TaskStatus::SUCCEEDED);
+        Task dated(8,TaskType::REGRESSION,"date-query","18926");
+        dated.setPayload({{"case","case/run.tcl"},{"context",{{"source","scheduled"},{"date","2026-10-18"},{"template","route"}}}});
+        assert(dated.transitionTo(TaskStatus::QUEUED));upgraded.save({dated});
+        size_t visited=0;upgraded.visitTasks([&](Task&& task,uint64_t){assert(task.getId()==8);++visited;},0,false,"",{"2026-10-18"});
+        assert(visited==1);
+        sqlite3* audit=nullptr;assert(sqlite3_open(db.c_str(),&audit)==SQLITE_OK);
+        sqlite3_stmt* plan=nullptr;
+        assert(sqlite3_prepare_v2(audit,"EXPLAIN QUERY PLAN SELECT task_id FROM task_query_index WHERE day='2026-10-18'",-1,&plan,nullptr)==SQLITE_OK);
+        assert(sqlite3_step(plan)==SQLITE_ROW);
+        assert(std::string(reinterpret_cast<const char*>(sqlite3_column_text(plan,3))).find("query_day")!=std::string::npos);
+        sqlite3_finalize(plan);sqlite3_close(audit);
+    }
     std::filesystem::remove_all(directory);
 }

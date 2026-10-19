@@ -110,6 +110,9 @@ private:
     void openTask(uint64_t id);
     void openBatch(const QString& batch);
     void openBatchRows(const QString& batch,const Json& records);
+    void rerunFailures(const Json& rows);
+    void loadRerun(std::shared_ptr<Json> ids,size_t index);
+    void showDailyPlan();
     void openLogs(const Json& task);
     void compareDemoDates();
     void queryDaily(bool next=false);

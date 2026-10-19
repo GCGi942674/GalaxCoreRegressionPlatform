@@ -34,7 +34,10 @@ WorkerServer::WorkerServer(bool persistent)
     worker_manager_ptr_ = std::make_unique<WorkerManager>(store_ptr_.get());
     registry_ptr_ = std::make_unique<WorkerConnectionRegistry>();
     dispatcher_ptr_ = std::make_unique<NetworkWorkerDispatcher>(*registry_ptr_);
-    scheduler_ptr_ = std::make_unique<Scheduler>(*worker_manager_ptr_);
+    const int max_running = Config::instance().getInt("scheduler.max_running_tasks", 32);
+    if (max_running < 1 || max_running > 100000)
+        throw std::runtime_error("invalid scheduler.max_running_tasks");
+    scheduler_ptr_ = std::make_unique<Scheduler>(*worker_manager_ptr_, static_cast<size_t>(max_running));
     if (store_ptr_) scheduler_ptr_->restoreFrom(*store_ptr_);
     coordinator_ptr_ = std::make_unique<SchedulingCoordinator>(*scheduler_ptr_, *dispatcher_ptr_);
     scheduling_driver_ptr_ = std::make_unique<SchedulingDriver>(*coordinator_ptr_);
@@ -110,7 +113,7 @@ void WorkerServer::attach(EchoServer& transport) {
         [this](const std::shared_ptr<Connection>& conn, const std::string& message) {
             ProtocolMessage request;ProtocolError error;
             if(ProtocolCodec::decode(message,request,error)&&
-                (request.type==MessageType::LOG_APPEND||request.type==MessageType::QUERY_LOGS||request.type==MessageType::READ_LOG)){
+                (request.type==MessageType::LOG_APPEND||request.type==MessageType::LOG_STATE||request.type==MessageType::QUERY_LOGS||request.type==MessageType::READ_LOG||request.type==MessageType::QUERY_DAILY_PLAN)){
                 bool permitted=false;{std::lock_guard<std::mutex> lock(session_mutex_);auto it=sessions_.find(conn.get());if(it!=sessions_.end())permitted=it->second->authorizeLog(request);}
                 if(permitted){
                     bool queued=false;{std::lock_guard<std::mutex> lock(log_mutex_);

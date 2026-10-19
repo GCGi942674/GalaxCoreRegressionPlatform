@@ -6,6 +6,7 @@ Invoke from cron or manually; this process does not stay resident.
 import argparse
 from datetime import date
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -318,6 +319,21 @@ def run(config, dry_run=False, check_only=False, interval=30):
             print('[BACKUP] ' + str(backup_database(config)), flush=True)
         atomic_text(protect, revision + "\n")
         atomic_text(state_path, json.dumps(state, sort_keys=True))
+        # Publish ALL Tasks.yaml entries before the first testcase. An interrupted
+        # submit is visible even when some batches have no task records at all.
+        batches = {}
+        for entry in plan:
+            context = entry["payload"]["context"]
+            group = context["batch_id"]
+            if group not in batches:
+                batches[group] = dict(batch_id=group, template=context["template"],
+                    name=context["name"], revision=entry["revision"], planned=0)
+            batches[group]["planned"] += 1
+        manifest = dict(date=state["day"], suite_id=batch_id,
+            plan_sha256=hashlib.sha256(json.dumps(plan, sort_keys=True,
+                separators=(",", ":")).encode("utf-8")).hexdigest(),
+            batches=list(batches.values()))
+        request(config, "publish_daily_plan", manifest)
         print("BATCH: " + batch_id, flush=True)
         for index in range(state.get("next_index", len(state["task_ids"])), len(plan)):
             entry = plan[index]
@@ -346,7 +362,10 @@ def run(config, dry_run=False, check_only=False, interval=30):
                 print("[{}/{}] task_id={} template={} case={}".format(
                     index + 1, len(plan), task_id, entry["payload"]["flow"], entry["payload"]["case"]),
                     flush=True)
-            if index + 1 < len(plan):
+            # Tasks.yaml entries are batches. Never sleep between their cases.
+            # Keep the historical 30-second pause after each submitted batch.
+            if (index + 1 == len(plan) or
+                    plan[index + 1]["payload"]["context"]["batch_id"] != group_id):
                 time.sleep(interval)
         state["phase"] = "complete"
         atomic_text(state_path, json.dumps(state, sort_keys=True))
@@ -358,7 +377,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--check-only", action="store_true")
-    parser.add_argument("--interval", type=float, default=30)
+    parser.add_argument("--interval", type=float, default=30,
+                        help="seconds to pause after each Tasks.yaml batch, not each testcase")
     args = parser.parse_args()
     try:
         config = load_config("server")

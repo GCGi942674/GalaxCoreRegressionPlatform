@@ -15,6 +15,8 @@ std::string toString(MessageType type) {
         case MessageType::CONTROL_WORKERS: return "control_workers";
         case MessageType::CANCEL_TASK:    return "cancel_task";
         case MessageType::QUERY_BATCH:    return "query_batch";
+        case MessageType::PUBLISH_DAILY_PLAN: return "publish_daily_plan";
+        case MessageType::QUERY_DAILY_PLAN: return "query_daily_plan";
         case MessageType::CANCEL_BATCH:   return "cancel_batch";
         case MessageType::QUERY_REGRESSION: return "query_regression";
         case MessageType::QUERY_PROGRESS: return "query_progress";
@@ -29,6 +31,7 @@ std::string toString(MessageType type) {
         case MessageType::TASK_START:     return "task_start";
         case MessageType::TASK_RESULT:    return "task_result";
         case MessageType::LOG_APPEND:     return "log_append";
+        case MessageType::LOG_STATE: return "log_state";
         case MessageType::RESPONSE:       return "response";
         default:                          return "unknown";
     }
@@ -46,6 +49,8 @@ MessageType messageTypeFromString(const std::string& value) {
         {"control_workers", MessageType::CONTROL_WORKERS},
         {"cancel_task", MessageType::CANCEL_TASK},
         {"query_batch", MessageType::QUERY_BATCH},
+        {"publish_daily_plan", MessageType::PUBLISH_DAILY_PLAN},
+        {"query_daily_plan", MessageType::QUERY_DAILY_PLAN},
         {"cancel_batch", MessageType::CANCEL_BATCH},
         {"query_regression", MessageType::QUERY_REGRESSION},
         {"query_progress", MessageType::QUERY_PROGRESS},
@@ -60,6 +65,7 @@ MessageType messageTypeFromString(const std::string& value) {
         {"task_start", MessageType::TASK_START},
         {"task_result", MessageType::TASK_RESULT},
         {"log_append", MessageType::LOG_APPEND},
+        {"log_state", MessageType::LOG_STATE},
         {"response", MessageType::RESPONSE}
     };
 

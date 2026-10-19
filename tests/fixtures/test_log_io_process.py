@@ -38,10 +38,17 @@ with tempfile.TemporaryDirectory(prefix='gcrp-log-io-') as folder:
                 tasks = [request(port,'query_task',{'task_id':id})['result'] for id in ids]
                 if all(task['status']=='SUCCEEDED' for task in tasks):
                     archives=[request(port,'query_logs',dict(task_id=t['task_id'],run_id=t['run_id'])) for t in tasks]
-                    if all(len(a['result']['items'])>=3 and all(i['complete'] for i in a['result']['items']) for a in archives):
-                        break
+                    if all(len(a['result']['items'])>=3 and all(i['complete'] for i in a['result']['items'])
+                           and a['result']['archive_state']=='LOCAL_CLEANED' for a in archives):
+                        if len(list((root/'output').glob('run-*/*/archived.json')))==len(ids):
+                            break
                 assert time.monotonic()<deadline, (tasks, (root/'console.log').read_text()[-2000:])
                 time.sleep(.05)
+            assert not list((root/'output').glob('run-*/*/stdout.log'))
+            assert not list((root/'output').glob('run-*/*/stderr.log'))
+            assert not list((root/'output').glob('run-*/*/result.json'))
+            archived_stdout=request(port,'read_log',dict(task_id=tasks[0]['task_id'],run_id=tasks[0]['run_id'],name='stdout.log',offset=0,limit=16384))
+            assert b'demo stdout' in bytes.fromhex(archived_stdout['result']['data_hex'])
             with ThreadPoolExecutor(max_workers=8) as pool:
                 results=list(pool.map(lambda _:request(port,'query_status',{}), range(40)))
             assert all(r['code']==0 and r['result']['total']==8 for r in results)
@@ -73,6 +80,8 @@ with tempfile.TemporaryDirectory(prefix='gcrp-log-io-') as folder:
             wait_server(port,server)
             assert request(port,'query_status',{})['result']['total']==8
             assert all(request(port,'query_task',{'task_id':id})['result']['status']=='SUCCEEDED' for id in ids)
+            restored_log=request(port,'read_log',dict(task_id=tasks[0]['task_id'],run_id=tasks[0]['run_id'],name='stdout.log',offset=0,limit=16384))
+            assert restored_log['result']['data_hex']==archived_stdout['result']['data_hex']
             new=request(port,'submit_task',dict(task_type='REGRESSION',target='restored',revision='demo'))
             assert new['result']['task_id']==9,new
         finally:

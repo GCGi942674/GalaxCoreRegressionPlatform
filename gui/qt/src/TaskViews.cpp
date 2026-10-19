@@ -1,4 +1,6 @@
 #include "ConsoleSupport.h"
+#include "RerunTask.h"
+#include "ArchiveDownload.h"
 
 void MainWindow::showTasks() {
     const auto current=tasksTree_->currentItem();const auto selected=current?current->data(0,Qt::UserRole+1).toString():QString{};
@@ -97,10 +99,13 @@ void MainWindow::openBatchRows(const QString& batch,const Json& records) {
     auto hint=new QLabel(QStringLiteral("已加载该任务全部案例的查询快照；筛选 / 导出覆盖此任务，不限于当前页。缺少日志不代表 testcase 失败。"));hint->setObjectName("muted");hint->setWordWrap(true);layout->addWidget(hint);
     auto toolbar=new QHBoxLayout;auto status=new QComboBox;for(int i=0;i<taskStatus_->count();++i)status->addItem(taskStatus_->itemText(i),taskStatus_->itemData(i));
     auto search=new QLineEdit;search->setPlaceholderText(QStringLiteral("搜索 testcase 路径 / Worker"));search->setClearButtonEnabled(true);
-    auto exportButton=new QPushButton(QStringLiteral("导出匹配清单…"));toolbar->addWidget(status);toolbar->addWidget(search,1);toolbar->addWidget(exportButton);layout->addLayout(toolbar);
+    auto exportButton=new QPushButton(QStringLiteral("导出匹配清单…"));
+    auto rerun=new QPushButton(QStringLiteral("复测筛选中的失败 / 超时"));rerun->setObjectName("rerunFailures");
+    toolbar->addWidget(status);toolbar->addWidget(search,1);toolbar->addWidget(rerun);toolbar->addWidget(exportButton);layout->addLayout(toolbar);
     auto rows=table({QStringLiteral("Testcase"),QStringLiteral("状态"),QStringLiteral("阶段 / 原因"),QStringLiteral("操作")});rows->setObjectName("caseResults");rows->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);rows->horizontalHeader()->setSectionResizeMode(0,QHeaderView::Stretch);rows->setColumnWidth(1,90);rows->setColumnWidth(2,235);rows->setColumnWidth(3,165);rows->verticalHeader()->setDefaultSectionSize(66);layout->addWidget(GcrpUi::card(rows),1);
     auto footer=new QHBoxLayout;auto count=new QLabel;count->setObjectName("muted");footer->addWidget(count,1);auto prev=new QPushButton(QStringLiteral("上一页"));auto next=new QPushButton(QStringLiteral("下一页"));footer->addWidget(prev);footer->addWidget(next);layout->addLayout(footer);
     auto pageIndex=std::make_shared<int>(0);auto matches=std::make_shared<Json>(Json::array());
+    connect(rerun,&QPushButton::clicked,dialog,[this,matches]{rerunFailures(*matches);});
     auto paint=[this,rows,search,status,snapshot,count,pageIndex,matches,prev,next]{
         *matches=Json::array();rows->setRowCount(0);
         for(const auto& task:*snapshot){const auto state=text(task,"status"),filter=status->currentData().toString();const auto payload=task.value("payload",Json::object());const auto path=text(payload,"case");
@@ -150,6 +155,32 @@ void MainWindow::openBatchRows(const QString& batch,const Json& records) {
     });paint();dialog->show();
 }
 
+void MainWindow::rerunFailures(const Json& rows) {
+    if(submitting_||loading_){note(QStringLiteral("当前窗口有提交 / 查询操作，请稍后再试。"));return;}
+    auto ids=std::make_shared<Json>(Json::array());
+    for(const auto& task:rows)if(text(task,"status")=="FAILED"||text(task,"status")=="TIMEOUT")ids->push_back(task.at("task_id"));
+    if(ids->empty()){note(QStringLiteral("当前筛选中没有失败或超时案例。"));return;}
+    if(demo_){note(QStringLiteral("演示：将创建独立人工复测批次，不修改原每日回归。"));return;}
+    if(!operations_.contains("submit_task")||!operations_.contains("query_task"))return;
+    if(QMessageBox::question(this,QStringLiteral("确认复测"),QStringLiteral("复测当前筛选中的 %1 个失败 / 超时案例。\n继承各自原始 ZIP 版本、flow_config 和超时。\n创建新的人工批次，不覆盖历史，也不参与每日回归比较。\n尚未提交前会先读取完整配置，读取失败则整批不提交。").arg(ids->size()))!=QMessageBox::Yes)return;
+    submitting_=true;submit_->setEnabled(false);pendingSubmissions_=Json::array();submitIndex_=0;
+    manualBatch_="rerun-"+QUuid::createUuid().toString().mid(1,36);
+    loadRerun(ids,0);
+}
+void MainWindow::loadRerun(std::shared_ptr<Json> ids,size_t index) {
+    if(index==ids->size()){submitNext();return;}
+    rpc_.request("query_task",{{"task_id",(*ids)[index]}},[this,ids,index](RpcReply reply){
+        try{
+            if(!reply.ok)throw std::runtime_error(reply.error.toStdString());
+            pendingSubmissions_.push_back(rerunTask(reply.result,manualBatch_.toStdString(),index));
+            loadRerun(ids,index+1);
+        }catch(const std::exception& e){
+            submitting_=false;submit_->setEnabled(true);pendingSubmissions_=Json::array();
+            QMessageBox::warning(this,QStringLiteral("复测准备失败 · 未提交任何案例"),QString::fromUtf8(e.what()));
+        }
+    });
+}
+
 void MainWindow::openTask(uint64_t id) {
     auto display=[this](RpcReply r){if(!r.ok){QMessageBox::warning(this,QStringLiteral("查询失败"),r.error);return;}
         auto dialog=new QDialog(this);dialog->setAttribute(Qt::WA_DeleteOnClose);dialog->setWindowTitle(QStringLiteral("Task 详情与日志"));dialog->resize(850,650);auto layout=new QVBoxLayout(dialog);
@@ -168,6 +199,8 @@ void MainWindow::openLogs(const Json& task) {
     auto titleRow=new QHBoxLayout;auto title=new QLabel(QStringLiteral("原始 run / 执行证据"));title->setObjectName("dialogTitle");titleRow->addWidget(title,1);auto close=new QPushButton(QStringLiteral("关闭"));titleRow->addWidget(close);connect(close,&QPushButton::clicked,dialog,&QDialog::close);layout->addLayout(titleRow);
     auto description=new QLabel(text(task.value("payload",Json::object()),"case")+"\nTask #"+text(task,"task_id")+" · "+text(task,"status")+" · "+text(task,"run_id"));description->setTextFormat(Qt::PlainText);description->setWordWrap(true);description->setObjectName("muted");layout->addWidget(description);
     auto warning=new QLabel(QStringLiteral("优先查看原始 run。run.log 是执行器日志，不能替代 GalaxCore 输出。下载仅包含 Server 已采集的归档，不能保证源文件未被截断。"));warning->setObjectName("notice");warning->setWordWrap(true);layout->addWidget(warning);
+    auto lifecycle=new QLabel(QStringLiteral("正在查询归档状态…"));lifecycle->setWordWrap(true);lifecycle->setObjectName("archiveLifecycle");layout->addWidget(lifecycle);
+    auto reload=new QPushButton(QStringLiteral("刷新归档状态"));titleRow->insertWidget(1,reload);
     auto split=new QSplitter;auto files=new QListWidget;files->setObjectName("logFiles");files->setMinimumWidth(165);files->setMaximumWidth(220);split->addWidget(files);
     auto content=new QWidget;auto box=new QVBoxLayout(content);box->setContentsMargins(0,0,0,0);box->setSpacing(0);
     auto toolbar=new QHBoxLayout;auto search=new QLineEdit;search->setPlaceholderText(QStringLiteral("查找当前片段 · 回车跳到下一处"));auto next=new QPushButton(QStringLiteral("下一段"));next->setEnabled(false);auto download=new QPushButton(QStringLiteral("下载已归档文件"));download->setEnabled(false);toolbar->addWidget(search,1);toolbar->addWidget(next);toolbar->addWidget(download);box->addLayout(toolbar);
@@ -201,31 +234,35 @@ void MainWindow::openLogs(const Json& task) {
     connect(download,&QPushButton::clicked,dialog,[this,guard,task,files,next,download,status,reading,downloading,offset]{
         if(*reading||*downloading||!files->currentItem()||demo_)return;const auto name=files->currentItem()->data(Qt::UserRole).toString();
         const auto path=QFileDialog::getSaveFileName(guard,QStringLiteral("保存 Server 已归档文件（不是未采集的完整源文件）"),name);if(path.isEmpty())return;
-        auto file=std::make_shared<QSaveFile>(path);if(!file->open(QIODevice::WriteOnly)){status->setText(file->errorString());return;}
-        *downloading=true;files->setEnabled(false);next->setEnabled(false);download->setEnabled(false);auto position=std::make_shared<uint64_t>(0);auto total=std::make_shared<uint64_t>(0);
-        auto step=std::make_shared<std::function<void()>>();std::weak_ptr<std::function<void()>> weak=step;
-        *step=[this,guard,task,files,next,download,status,name,file,position,total,weak,downloading,offset]{
-            if(!guard){file->cancelWriting();return;}auto keep=weak.lock();if(!keep)return;const auto at=*position;
-            rpc_.request("read_log",{{"task_id",task.at("task_id")},{"run_id",task.at("run_id")},{"name",name.toStdString()},{"offset",at},{"limit",16384}},
-              [guard,files,next,download,status,file,position,total,keep,at,downloading,offset](RpcReply r){
-                if(!guard){file->cancelWriting();return;}
-                auto fail=[&](const QString& error){file->cancelWriting();*downloading=false;files->setEnabled(true);download->setEnabled(true);status->setText(QStringLiteral("下载失败：")+error);};
-                if(!r.ok){fail(r.error);return;}try{
-                    const auto size=r.result.at("size").get<uint64_t>(),end=r.result.at("next_offset").get<uint64_t>();const auto hex=r.result.at("data_hex").get<std::string>();const auto bytes=QByteArray::fromHex(QByteArray(hex.data(),int(hex.size())));
-                    if(!r.result.value("complete",false)||size>64*1024*1024||(at&&size!=*total)||end<at||end>size||end-at!=uint64_t(bytes.size())||(end==at&&end<size))throw std::runtime_error("archive changed, incomplete or exceeds 64 MiB download limit");
-                    if(file->write(bytes)!=bytes.size())throw std::runtime_error("cannot write destination");
-                    *total=size;*position=end;
-                    if(end<size){status->setText(QStringLiteral("下载归档 %1 / %2 字节…").arg(qulonglong(end)).arg(qulonglong(size)));(*keep)();}
-                    else{if(!file->commit())throw std::runtime_error("cannot commit destination");*downloading=false;files->setEnabled(true);next->setEnabled(*offset<size);download->setEnabled(true);status->setText(QStringLiteral("已保存 %1 字节归档。源文件是否截断请核对采集记录。").arg(qulonglong(size)));}
-                }catch(const std::exception& e){fail(QString::fromUtf8(e.what()));}
-              });
-        };(*step)();
+        const auto digest=files->currentItem()->data(Qt::UserRole+1).toString();
+        if(digest.isEmpty()&&QMessageBox::question(guard,QStringLiteral("历史归档 · 未校验"),
+            QStringLiteral("此文件没有 Server SHA-256 收据。可下载已有归档字节，但不能证明源文件采集完整或提供校验续传。\n仍要完整下载吗？"))!=QMessageBox::Yes)return;
+        *downloading=true;files->setEnabled(false);next->setEnabled(false);download->setEnabled(false);
+        auto transfer=new ArchiveDownload(rpc_,{{"task_id",task.at("task_id")},{"run_id",task.at("run_id")},{"name",name.toStdString()}},path,digest,
+            [guard,status,digest](uint64_t at,uint64_t total){if(guard)status->setText((digest.isEmpty()?
+                QStringLiteral("完整下载历史归档 %1 / %2 字节；无 Server 校验收据，不支持续传。"):
+                QStringLiteral("下载并校验 %1 / %2 字节；中断后选择相同目标文件继续。")).arg(qulonglong(at)).arg(qulonglong(total)));},
+            [guard,status,files,next,download,downloading](bool ok,QString message){
+                if(!guard)return;*downloading=false;files->setEnabled(true);download->setEnabled(true);next->setEnabled(false);
+                status->setText((ok?QStringLiteral("下载完成："):QStringLiteral("下载未完成："))+message);
+            },guard);
+        transfer->start();
     });
     dialog->show();
     if(demo_){files->addItem(QStringLiteral("原始 run"));files->item(0)->setData(Qt::UserRole,"evidence.run");for(const auto& name:QStringList{"result.env","flow_config","run.log","stdout.log","stderr.log"}){auto item=new QListWidgetItem(name,files);item->setData(Qt::UserRole,name);}files->setCurrentRow(0);(*read)();return;}
-    rpc_.request("query_logs",{{"task_id",task.at("task_id")},{"run_id",task.at("run_id")}},[guard,files,status,read](RpcReply r){if(!guard)return;if(!r.ok){status->setText(r.error);return;}try{
+    auto load=[this,guard,task,files,status,lifecycle,read,reading,downloading,offset]{
+      if(!guard||*reading||*downloading)return;
+      rpc_.request("query_logs",{{"task_id",task.at("task_id")},{"run_id",task.at("run_id")}},[guard,files,status,lifecycle,read,offset](RpcReply r){if(!guard)return;if(!r.ok){status->setText(r.error);return;}try{
+        const QMap<QString,QString> states{{"NOT_REPORTED",QStringLiteral("未收到归档清单：可能待上传或旧 Worker 未上报，不能判断已过期")},
+            {"UPLOADING",QStringLiteral("上传中 / 文件集尚未全部校验")},{"UPLOADED_UNVERIFIED",QStringLiteral("已有归档，但缺少完整文件集校验")},
+            {"SERVER_VERIFIED",QStringLiteral("Server 已校验完整文件集；Worker 清理尚未确认")},
+            {"LOCAL_CLEANED",QStringLiteral("Server 已校验完整文件集；Worker 已确认本地任务日志清理")},
+            {"EXPIRED",QStringLiteral("归档已按保留期清理；任务结果和到期标记保留")}};
+        const auto state=text(r.result,"archive_state");lifecycle->setText(states.value(state,QStringLiteral("旧 Server 未提供归档状态，缺少文件不能推断原因。")));
         auto items=r.result.at("items");std::stable_sort(items.begin(),items.end(),[](const Json& a,const Json& b){return (text(a,"name")=="evidence.run")>(text(b,"name")=="evidence.run");});
-        {QSignalBlocker block(files);for(const auto& file:items){const auto name=text(file,"name");auto item=new QListWidgetItem((name=="evidence.run"?QStringLiteral("原始 run"):name)+(file.value("complete",false)?"":QStringLiteral(" · 上传中")),files);item->setData(Qt::UserRole,name);item->setToolTip(name);}if(files->count())files->setCurrentRow(0);}
-        if(items.empty())status->setText(QStringLiteral("暂无归档：可能尚未上传、未采集或超过 30 天保留期；API 当前无法区分，不能据此推断失败阶段。"));else (*read)();
+        {QSignalBlocker block(files);files->clear();*offset=0;for(const auto& file:items){const auto name=text(file,"name");auto item=new QListWidgetItem((name=="evidence.run"?QStringLiteral("原始 run"):name)+(file.value("complete",false)?"":QStringLiteral(" · 上传中")),files);item->setData(Qt::UserRole,name);item->setData(Qt::UserRole+1,QString::fromStdString(file.value("sha256",std::string{})));item->setToolTip(name);}if(files->count())files->setCurrentRow(0);}
+        if(items.empty())status->setText(QStringLiteral("当前没有可读取文件。请查看上方归档状态。"));else (*read)();
     }catch(const std::exception& e){status->setText(QString::fromUtf8(e.what()));}});
+    };
+    connect(reload,&QPushButton::clicked,dialog,load);load();
 }
