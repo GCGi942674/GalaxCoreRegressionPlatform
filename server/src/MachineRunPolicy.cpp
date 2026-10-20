@@ -110,6 +110,9 @@ MachineRunPolicy::Json MachineRunPolicy::evaluate(const Json& spec,int64_t wall_
     Json plan=spec;plan.erase("mode");plan.erase("override_until_ms");
     return {{"supported",supported()},{"enabled",enabled_},{"configured_mode",configured!="auto"&&until<=wall_ms?"auto":configured},{"effective_mode",mode},
         {"mode_limit",limit_},{"target_limit",target_},{"reported_slots",slots_},{"reason",reason},{"resource_status",status},
-        {"override_until_ms",until>wall_ms?until:int64_t(0)},{"server_timezone",zone},{"plan",plan},{"resources",telemetry_}};
+        {"override_until_ms",until>wall_ms?until:int64_t(0)},{"server_timezone",zone},{"plan",plan},{"resources",telemetry_},
+        {"resource_thresholds",{{"stale_seconds",tuning_.stale_seconds},{"memory_warn_percent",tuning_.warn_percent},
+            {"memory_critical_percent",tuning_.critical_percent},{"memory_recover_percent",tuning_.recover_percent},
+            {"cpu_expand_percent",tuning_.cpu_expand_percent},{"disk_reserve_bytes",tuning_.disk_reserve_bytes}}}};
 }
 }

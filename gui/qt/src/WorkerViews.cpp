@@ -192,16 +192,14 @@ void MainWindow::showWorkers() {
         QString expiry=QStringLiteral("无临时覆盖");const auto until=policy.value("override_until_ms",int64_t(0));
         if(until>0)expiry=QStringLiteral("临时覆盖至 %1（按本机时区显示）").arg(QDateTime::fromMSecsSinceEpoch(until).toLocalTime().toString("yyyy-MM-dd HH:mm t"));
         hostPolicySummary_->setText((workersStale_?QStringLiteral("【过期快照】 "):QString())+
-            QStringLiteral("配置 %1 → 生效 %2 · 模式上限 %3 / 目标 %4 / 注册 %5 · 活动任务 %6\n%7 · %8 · %9\n每周计划按 Server 本地时间执行；模式切换保留手动下线状态。")
+            QStringLiteral("配置 %1 → 生效 %2 · 模式上限 %3 / 目标 %4 / 注册 %5 · 活动任务 %6\n%7 · %8")
             .arg(policyMode(text(policy,"configured_mode"))).arg(policyMode(text(policy,"effective_mode")))
             .arg(text(policy,"mode_limit")).arg(text(policy,"target_limit")).arg(text(policy,"reported_slots")).arg(text(policy,"active_tasks"))
             .arg(policy.value("enabled",false)?QStringLiteral("策略启用"):QStringLiteral("策略关闭"))
-            .arg(policyReason(policy)).arg(expiry));
+            .arg(expiry));
         hostPolicySummary_->setToolTip(QString::fromStdString(policy.dump(2)));
-        const QMap<QString,QString> resourceNames{{"fresh",QStringLiteral("资源采样有效")},{"waiting",QStringLiteral("等待资源采样")},
-            {"stale",QStringLiteral("资源采样过期")},{"invalid",QStringLiteral("资源采样无效")},{"legacy",QStringLiteral("旧版资源上报")}};
-        hostPolicySummary_->setText(hostPolicySummary_->text()+"\n"+resourceNames.value(text(policy,"resource_status"),QStringLiteral("未提供资源状态")));
     }
+    showHostResources();
 }
 
 void MainWindow::setHostPolicy(const QString& machine,const Json& policy) {

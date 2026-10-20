@@ -33,6 +33,20 @@ QWidget* MainWindow::workersPage() {
     auto plan=new QPushButton(QStringLiteral("每周计划…"));plan->setObjectName("hostPolicyPlan");hostPolicyButtons_.append(plan);policyRow->addWidget(plan);
     connect(plan,&QPushButton::clicked,this,&MainWindow::editHostPolicy);policyRow->addStretch();rightBox->addLayout(policyRow);
     hostPolicySummary_=new QLabel;hostPolicySummary_->setObjectName("hostPolicySummary");hostPolicySummary_->setTextFormat(Qt::PlainText);hostPolicySummary_->setWordWrap(true);rightBox->addWidget(hostPolicySummary_);
+    auto resources=new QFrame;resources->setObjectName("hostResources");auto resourceBox=new QVBoxLayout(resources);resourceBox->setContentsMargins(0,0,0,0);resourceBox->setSpacing(7);
+    auto resourceHeading=new QHBoxLayout;auto resourceTitle=new QLabel(QStringLiteral("主机资源"));resourceTitle->setObjectName("sectionTitle");resourceHeading->addWidget(resourceTitle);
+    resourceHeading->addStretch();hostResourceStatus_=new QLabel;hostResourceStatus_->setObjectName("hostResourceStatus");hostResourceStatus_->setTextFormat(Qt::PlainText);resourceHeading->addWidget(hostResourceStatus_);resourceBox->addLayout(resourceHeading);
+    auto resourceCards=new QHBoxLayout;resourceCards->setSpacing(10);
+    for(const auto& entry:QList<QPair<QString,QString>>{{"cpu",QStringLiteral("CPU 使用率")},{"memory",QStringLiteral("可用内存")},{"disk",QStringLiteral("工作盘可用空间")},{"concurrency",QStringLiteral("活动任务 / 目标并发")}}){
+        auto card=new QFrame;card->setObjectName("metricCard");auto box=new QVBoxLayout(card);box->setContentsMargins(12,9,12,9);box->setSpacing(4);
+        auto caption=new QLabel(entry.second);caption->setObjectName("muted");box->addWidget(caption);
+        auto value=new QLabel(QStringLiteral("—"));value->setObjectName("resource_"+entry.first);value->setTextFormat(Qt::PlainText);value->setStyleSheet("font-size:19px;font-weight:600;");box->addWidget(value);hostResourceValues_[entry.first]=value;
+        auto detail=new QLabel;detail->setObjectName("resourceDetail_"+entry.first);detail->setTextFormat(Qt::PlainText);detail->setWordWrap(true);detail->setStyleSheet("font-size:11px;color:#72829a;");box->addWidget(detail);hostResourceDetails_[entry.first]=detail;
+        auto bar=new QProgressBar;bar->setObjectName("resourceBar_"+entry.first);bar->setRange(0,1000);bar->setTextVisible(false);bar->setFixedHeight(4);box->addWidget(bar);hostResourceBars_[entry.first]=bar;
+        resourceCards->addWidget(card,1);
+    }
+    resourceBox->addLayout(resourceCards);hostResourceDecision_=new QLabel;hostResourceDecision_->setObjectName("hostResourceDecision");hostResourceDecision_->setTextFormat(Qt::PlainText);hostResourceDecision_->setWordWrap(true);resourceBox->addWidget(hostResourceDecision_);
+    hostResourceExtra_=new QLabel;hostResourceExtra_->setObjectName("hostResourceExtra");hostResourceExtra_->setTextFormat(Qt::PlainText);hostResourceExtra_->setWordWrap(true);hostResourceExtra_->setStyleSheet("font-size:11px;color:#72829a;");resourceBox->addWidget(hostResourceExtra_);rightBox->addWidget(resources);
     slotsTable_=table({QStringLiteral("Slot / Worker ID"),QStringLiteral("工作状态"),QStringLiteral("连接 / 调度 / 维护"),QStringLiteral("当前 testcase"),QStringLiteral("操作")});
     slotsTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);slotsTable_->horizontalHeader()->setSectionResizeMode(3,QHeaderView::Stretch);slotsTable_->verticalHeader()->setDefaultSectionSize(76);rightBox->addWidget(slotsTable_,1);
     slotsTable_->setObjectName("workerSlots");slotsTable_->horizontalHeader()->setSectionResizeMode(4,QHeaderView::Fixed);slotsTable_->setColumnWidth(4,260);

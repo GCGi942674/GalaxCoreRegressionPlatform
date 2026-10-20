@@ -106,6 +106,8 @@ Json WorkerManager::policyViewLocked(const Worker& worker) const {
         return {{"supported",false},{"enabled",required},{"resume_allowed",!required},{"slot_allowed",!required},{"plan",specForLocked(machine)},{"reason","upgrade_worker"}};
     }
     auto view=policy_views_.at(machine);const auto number=MachineRunPolicy::slotNumber(worker.getSlotId());
+    const auto age=p->second.sampleAgeSeconds(policyNow());
+    view["sample_age_seconds"]=age<0?Json(nullptr):Json(static_cast<uint64_t>(age));
     const bool enabled=view["enabled"].get<bool>();const bool mode_allowed=!enabled||(number>0&&number<=p->second.modeLimit());
     std::vector<int> allowed;const uint64_t used=machineUsedLocked(machine);
     for(const auto& row:workers_)if(row.second->getMachineId()==machine){

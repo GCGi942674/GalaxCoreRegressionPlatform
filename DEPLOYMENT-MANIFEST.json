@@ -1,13 +1,13 @@
 {
   "project": "GalaxCore Regression Platform",
   "flavor": "clean-source-deployment",
-  "base_commit": "c88648d469958a49e63219205e0e79a679c17611",
-  "deployment_revision": "v2.6 - daily regression switch and native weekly task plans (includes uncommitted v2.5 changes)",
+  "base_commit": "061770d0580163180eea5447976d1569dbfa22d1",
+  "deployment_revision": "v2.7 - real host resource visibility and telemetry freshness",
   "authentication": false,
   "database_schema": 6,
   "database": "not included; initialized on first Server start",
   "original_development_copy": "preserved unchanged",
-  "file_count": 180,
+  "file_count": 181,
   "files": [
     {
       "path": ".gitattributes",
@@ -341,8 +341,8 @@
     },
     {
       "path": "gui/qt/CMakeLists.txt",
-      "bytes": 989,
-      "sha256": "5902b9d0390770377f13a269aefc1c05d77f8d3ee0bf22f2a0cb2894f45080a5",
+      "bytes": 1015,
+      "sha256": "7fc0535d7151347d04770957d4fa959f0db419dd96dd1ca6400a3ad3c4cfb036",
       "mode": "0o644"
     },
     {
@@ -371,8 +371,8 @@
     },
     {
       "path": "gui/qt/include/MainWindow.h",
-      "bytes": 4673,
-      "sha256": "032be902dbfd51f541bff04c92d37695af1047c953dcb01c260146836d18df08",
+      "bytes": 4931,
+      "sha256": "7265c8698b986043d44f7eec81afc0f6a0a7f4b846576e444172fa442841a16b",
       "mode": "0o644"
     },
     {
@@ -407,8 +407,8 @@
     },
     {
       "path": "gui/qt/src/ConsolePages.cpp",
-      "bytes": 29965,
-      "sha256": "4ad002bde17e8db19748f436f85333b7105d9df39b2a67400cf2b2e904e7e026",
+      "bytes": 32547,
+      "sha256": "1c4401559e226bb77a82e08e81cb6ebaab20428441d6535f845d165d8cb36604",
       "mode": "0o644"
     },
     {
@@ -427,6 +427,12 @@
       "path": "gui/qt/src/DailyView.cpp",
       "bytes": 4470,
       "sha256": "295bac1abce09b9b217f8b619e8dfc8228703f770623e76f269b02ec76096c0c",
+      "mode": "0o644"
+    },
+    {
+      "path": "gui/qt/src/HostResourcesView.cpp",
+      "bytes": 9583,
+      "sha256": "e3373aaf8c71b9baf457bc6dbf5c097cc9e69941857a4b09d1ae79c745396b84",
       "mode": "0o644"
     },
     {
@@ -455,8 +461,8 @@
     },
     {
       "path": "gui/qt/src/WorkerViews.cpp",
-      "bytes": 32293,
-      "sha256": "ad82c9dc9889c0d36ca228fd7cb50d10a74f029c3e0e8724d3e7996fbe32e2ea",
+      "bytes": 31734,
+      "sha256": "41ac060b0b023eb6a751836796752bc61ffaad9ed42e4c340bf4920cf5fa58b1",
       "mode": "0o644"
     },
     {
@@ -485,8 +491,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 9249,
-      "sha256": "793fa551aad5528eacc245875fa7ef4cbaef618589fca084d57cb1f7a802466a",
+      "bytes": 9981,
+      "sha256": "9cafca858441080f67ae70a5c7d7a2ef94540e7b9735585888bd37b9f21c3e9e",
       "mode": "0o644"
     },
     {
@@ -665,8 +671,8 @@
     },
     {
       "path": "server/include/worker/MachineRunPolicy.h",
-      "bytes": 1666,
-      "sha256": "927aae7eaf73e045cd518672622699594a22b189b1ec5c132f8bf17d4990d731",
+      "bytes": 1769,
+      "sha256": "7fde60f0c646063a86e5f3089b54fd976c9c3fe36c11dddf91074020d88fd339",
       "mode": "0o644"
     },
     {
@@ -773,8 +779,8 @@
     },
     {
       "path": "server/src/MachineRunPolicy.cpp",
-      "bytes": 10196,
-      "sha256": "7eb0cdaeca49d8c2a65b54244df69039c7d3d8e7d305a42a8fb7de96974a1633",
+      "bytes": 10546,
+      "sha256": "d6c67c6d33b910d8d92dd5eca5dd0302c219825f998e97fab59d454e3798650e",
       "mode": "0o644"
     },
     {
@@ -869,8 +875,8 @@
     },
     {
       "path": "server/src/WorkerManager.cpp",
-      "bytes": 24872,
-      "sha256": "74fdf6c7b8796a2bc975deceb110259747311e91e4b502dc3e60bf288057d1db",
+      "bytes": 25017,
+      "sha256": "9e689a4f3b488a943fee309d49b72d04934a42b8e089b191b71e4b37ca838731",
       "mode": "0o644"
     },
     {

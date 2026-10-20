@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QListWidget>
 #include <QCheckBox>
+#include <QProgressBar>
 #include <memory>
 
 struct GuiSettings {
@@ -51,6 +52,10 @@ private:
     QList<QPushButton*> hostControlButtons_;
     QList<QPushButton*> hostPolicyButtons_;
     QLabel* hostPolicySummary_{};
+    QLabel *hostResourceStatus_{}, *hostResourceDecision_{}, *hostResourceExtra_{};
+    QMap<QString,QLabel*> hostResourceValues_, hostResourceDetails_;
+    QMap<QString,QProgressBar*> hostResourceBars_;
+    void showHostResources();
     void setHostPolicy(const QString& machine, const Json& policy);
     void editHostPolicy();
     QPushButton* hostRecoveryButton_{};

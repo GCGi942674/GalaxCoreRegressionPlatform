@@ -24,6 +24,7 @@ public:
     void report(const Json& report,const std::string& machine,double now);
     Json evaluate(const Json& spec,int64_t wall_ms,const std::tm& local,double now);
     bool fresh(double now) const{return valid_&&now-sample_at_<=tuning_.stale_seconds;}
+    double sampleAgeSeconds(double now) const{return valid_?(now>sample_at_?now-sample_at_:0.0):-1.0;}
     int target() const{return target_;}
     int modeLimit() const{return limit_;}
     bool active() const{return enabled_;}
