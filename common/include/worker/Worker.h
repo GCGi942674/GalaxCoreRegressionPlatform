@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <chrono>
 #include <memory>
+#include <nlohmann/json.hpp>
 
 namespace GCRP {
 
@@ -34,6 +35,7 @@ public:
     const WorkerControl& getControl() const { return *control_; }
     bool supportsControl() const { return control_supported_; }
     bool acceptsTasks() const { return control_->available(); }
+    const nlohmann::json& getRunPolicy() const {return run_policy_;}
 
     const auto& getRegisteredAt() const { return registered_at_; }
     const auto& getLastHeartbeat() const { return last_heartbeat_; }
@@ -71,6 +73,7 @@ private:
     bool explicit_identity_{false};
     std::shared_ptr<const WorkerControl> control_{std::make_shared<WorkerControl>()};
     bool control_supported_{false};
+    nlohmann::json run_policy_=nlohmann::json::object(); // Filled on inventory copies, not persisted per slot.
     WorkerStatus status_;
 
     uint32_t total_slots_;

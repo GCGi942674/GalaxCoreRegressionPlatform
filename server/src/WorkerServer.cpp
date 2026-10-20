@@ -64,6 +64,7 @@ WorkerServer::WorkerServer(bool persistent)
                 try {
                     std::lock_guard<std::mutex> lock(session_mutex_);
                     worker_manager_ptr_->checkTimeouts(std::chrono::seconds(timeout));
+                    if(worker_manager_ptr_->refreshRunPolicies())scheduling_driver_ptr_->requestSchedule();
                 } catch (const std::exception& error) {
                     LOG_ERROR(LogModule::WORKER, std::string("liveness check failed: ") + error.what());
                 }

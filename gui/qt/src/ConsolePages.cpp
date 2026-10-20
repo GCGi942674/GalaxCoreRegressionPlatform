@@ -23,6 +23,16 @@ QWidget* MainWindow::workersPage() {
     hostRecoveryButton_->setMinimumWidth(140);toolbar->addSpacing(16);toolbar->addWidget(hostRecoveryButton_);
     connect(hostRecoveryButton_,&QPushButton::clicked,this,[this]{recoverOfflineWorkers(true,machines_->currentText());});
     toolbar->addStretch();rightBox->addLayout(toolbar);
+    auto policyRow=new QHBoxLayout;policyRow->setSpacing(8);
+    policyRow->addWidget(new QLabel(QStringLiteral("运行模式")));
+    for(const auto& choice:QList<QPair<QString,QString>>{{QStringLiteral("Auto"),"auto"},{QStringLiteral("半开"),"half"},{QStringLiteral("全开"),"full"}}){
+        auto button=new QPushButton(choice.first);button->setObjectName("hostPolicy_"+choice.second);
+        hostPolicyButtons_.append(button);policyRow->addWidget(button);
+        connect(button,&QPushButton::clicked,this,[this,mode=choice.second]{setHostPolicy(machines_->currentText(),{{"enabled",true},{"mode",mode.toStdString()},{"duration_minutes",240}});});
+    }
+    auto plan=new QPushButton(QStringLiteral("每周计划…"));plan->setObjectName("hostPolicyPlan");hostPolicyButtons_.append(plan);policyRow->addWidget(plan);
+    connect(plan,&QPushButton::clicked,this,&MainWindow::editHostPolicy);policyRow->addStretch();rightBox->addLayout(policyRow);
+    hostPolicySummary_=new QLabel;hostPolicySummary_->setObjectName("hostPolicySummary");hostPolicySummary_->setTextFormat(Qt::PlainText);hostPolicySummary_->setWordWrap(true);rightBox->addWidget(hostPolicySummary_);
     slotsTable_=table({QStringLiteral("Slot / Worker ID"),QStringLiteral("工作状态"),QStringLiteral("连接 / 调度 / 维护"),QStringLiteral("当前 testcase"),QStringLiteral("操作")});
     slotsTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);slotsTable_->horizontalHeader()->setSectionResizeMode(3,QHeaderView::Stretch);slotsTable_->verticalHeader()->setDefaultSectionSize(76);rightBox->addWidget(slotsTable_,1);
     slotsTable_->setObjectName("workerSlots");slotsTable_->horizontalHeader()->setSectionResizeMode(4,QHeaderView::Fixed);slotsTable_->setColumnWidth(4,260);
@@ -60,7 +70,7 @@ QWidget* MainWindow::tasksPage() {
     tasksTree_->setRootIsDecorated(false);tasksTree_->setItemsExpandable(false);tasksTree_->setIndentation(0);tasksTree_->setAlternatingRowColors(false);tasksTree_->setMouseTracking(true);
     tasksTree_->setSelectionMode(QAbstractItemView::SingleSelection);tasksTree_->header()->setSectionResizeMode(QHeaderView::ResizeToContents);tasksTree_->header()->setStretchLastSection(false);
     tasksTree_->header()->setSectionResizeMode(QHeaderView::Fixed);tasksTree_->header()->setSectionResizeMode(0,QHeaderView::Interactive);tasksTree_->setColumnWidth(0,220);
-    const QList<int> widths{0,85,108,205,75,145,110,220};for(int i=1;i<widths.size();++i)tasksTree_->setColumnWidth(i,widths[i]);
+    const QList<int> widths{0,85,108,220,75,180,110,220};for(int i=1;i<widths.size();++i)tasksTree_->setColumnWidth(i,widths[i]);
     tasksTree_->header()->setDefaultAlignment(Qt::AlignLeft|Qt::AlignVCenter);tasksTree_->setUniformRowHeights(false);content->addWidget(tasksTree_,1);
     auto footer=new QHBoxLayout;footer->setContentsMargins(18,12,18,12);taskSummary_=new QLabel;taskSummary_->setWordWrap(true);footer->addWidget(taskSummary_,1);
     taskPrev_=new QPushButton(QStringLiteral("上一页"));taskNext_=new QPushButton(QStringLiteral("下一页"));footer->addWidget(taskPrev_);footer->addWidget(taskNext_);content->addLayout(footer);layout->addWidget(panel,1);

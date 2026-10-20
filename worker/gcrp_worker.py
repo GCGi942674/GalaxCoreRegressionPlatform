@@ -24,6 +24,7 @@ from recovery_journal import write_json, remove, sync_directory
 from log_retention import prune_worker_logs
 from maintenance import SlotMaintenance
 from slot_process import publish as publish_process
+from host_resources import ResourceSnapshot
 
 MAX_FRAME = 1024 * 1024
 _SLOT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
@@ -80,6 +81,7 @@ def shared_pjtest_settings(config, worker_id, output):
 class Worker:
     def __init__(self, args):
         self.args = args
+        self.resources = ResourceSnapshot(args.machine_id)
         self.sock = None
         self.buffer = bytearray()
         self.sequence = 0
@@ -134,7 +136,7 @@ class Worker:
                     return
                 self.connect()
             self.acknowledge_drain()
-            data = dict(worker_id=self.args.worker_id)
+            data = self.heartbeat_data()
             if self.maintenance and self.maintenance.acknowledgement() is not None:
                 data['maintenance_ack'] = self.maintenance.acknowledgement()
             management = self.request("worker_heartbeat", data)
@@ -162,9 +164,12 @@ class Worker:
         except OSError as error:
             raise TransportError(str(error)) from error
         self.buffer.clear()
-        registration = self.request("worker_register", dict(worker_id=self.args.worker_id,
+        registration_data = dict(worker_id=self.args.worker_id,
                      hostname=socket.gethostname(), machine_id=self.args.machine_id,
-                     slot_id=self.args.slot_id, slots=1, recovery_version=1, control_version=1))
+                     slot_id=self.args.slot_id, slots=1, recovery_version=1, control_version=1)
+        if self.resources.path:
+            registration_data.update(resource_version=1, machine_slots=self.resources.slots)
+        registration = self.request("worker_register", registration_data)
         self.archive_lifecycle = isinstance(registration, dict) and registration.get('archive_lifecycle_v1') is True
         self.draining = False
         self.acknowledge_drain()
@@ -198,6 +203,12 @@ class Worker:
             raise RuntimeError("recovery blocked; inspect server task and local journal: " + repr(result))
         print("[WORKER] connected; recovery=" + action, flush=True)
         self.try_flush_logs()
+
+    def heartbeat_data(self):
+        data = dict(worker_id=self.args.worker_id)
+        if self.resources.path:
+            data['resource_report'] = self.resources.report()
+        return data
 
     def pending_path(self):
         identity = hashlib.sha256(self.args.worker_id.encode("utf-8")).hexdigest()[:24]
@@ -340,7 +351,7 @@ class Worker:
                             raise RuntimeError("log upload made no progress")
                         offset = next_offset
                         if time.monotonic() - heartbeat_at >= 10:
-                            self.request("worker_heartbeat", dict(worker_id=self.args.worker_id))
+                            self.request("worker_heartbeat", self.heartbeat_data())
                             heartbeat_at = time.monotonic()
                 verified = self.request('log_append', dict(task_id=entry['task_id'], run_id=run_id,
                     worker_id=self.args.worker_id, name=name, offset=size, data_hex='', complete=True,
@@ -474,7 +485,7 @@ class Worker:
                 self.sequence += 1
                 heartbeat_ids.add(self.sequence)
                 heartbeat = json.dumps(dict(version=1, type='worker_heartbeat', request_id=self.sequence,
-                    data=dict(worker_id=self.args.worker_id))).encode()
+                    data=self.heartbeat_data())).encode()
                 self.sock.sendall(struct.pack('!I', len(heartbeat)) + heartbeat)
                 heartbeat_at = time.monotonic() + 1
             try:

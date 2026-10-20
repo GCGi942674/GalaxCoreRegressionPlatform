@@ -1,13 +1,13 @@
 {
   "project": "GalaxCore Regression Platform",
   "flavor": "clean-source-deployment",
-  "base_commit": "784ffd1127113eaa8115cbc33e2ba0926c19df44",
-  "deployment_revision": "v2.4 - explicit ZIP version selection for manual reruns",
+  "base_commit": "c88648d469958a49e63219205e0e79a679c17611",
+  "deployment_revision": "v2.5 - weekly full-half machine policies, resource admission and GUI layout (local changes)",
   "authentication": false,
   "database_schema": 6,
   "database": "not included; initialized on first Server start",
   "original_development_copy": "preserved unchanged",
-  "file_count": 174,
+  "file_count": 177,
   "files": [
     {
       "path": ".gitattributes",
@@ -227,8 +227,8 @@
     },
     {
       "path": "common/include/worker/Worker.h",
-      "bytes": 2729,
-      "sha256": "0364c64fc2c0317d3b08c418fdd6fa0a815aef55bec445f693903e2699929254",
+      "bytes": 2939,
+      "sha256": "2ac0406bd21cef99452b25bf782ea54c49aed78eb2487693004db8660278108f",
       "mode": "0o644"
     },
     {
@@ -323,8 +323,8 @@
     },
     {
       "path": "config/server.conf",
-      "bytes": 1376,
-      "sha256": "e8cdced396ad345e939e7bb9e378a5d7b5639b3c9bb29eb94a8aa64ec7c5d529",
+      "bytes": 1813,
+      "sha256": "1b119e628799af4a8baefad003e30e674440d30ee95f6f394cb4b6f8eb779ad0",
       "mode": "0o600"
     },
     {
@@ -371,8 +371,8 @@
     },
     {
       "path": "gui/qt/include/MainWindow.h",
-      "bytes": 4473,
-      "sha256": "ec03f3565c55550644aeb9b1b5ccb4e324dfe1faeadfe1c8dacdd6f53f50a144",
+      "bytes": 4646,
+      "sha256": "e60af121647a564307f2fc7a0ebb208d74480d42d4fedd6cac167f4b630bc491",
       "mode": "0o644"
     },
     {
@@ -401,8 +401,8 @@
     },
     {
       "path": "gui/qt/src/ConsolePages.cpp",
-      "bytes": 28259,
-      "sha256": "b2a595d71987db0f94e8e57372d9b9c88fb10c203581b7be1de8f19761bd0886",
+      "bytes": 29431,
+      "sha256": "08e6b395cf6bbf1886e61a8a36c6c4ec4b5ba5bab583f8c1fd89de1407b4162c",
       "mode": "0o644"
     },
     {
@@ -431,8 +431,8 @@
     },
     {
       "path": "gui/qt/src/MainWindow.cpp",
-      "bytes": 25770,
-      "sha256": "ff03d4c618b0a607a326f0fcdea63c90091979810a60d2b104f605c0311e506d",
+      "bytes": 25764,
+      "sha256": "e03903daa6964fa81d4fcdfff4fa13021170dac7a9e291673851acf16396619a",
       "mode": "0o644"
     },
     {
@@ -449,8 +449,8 @@
     },
     {
       "path": "gui/qt/src/WorkerViews.cpp",
-      "bytes": 19802,
-      "sha256": "1aa22010f69bf63b7d00dba152bc4d23e50fea66ceb2b4c80df0e8090e958109",
+      "bytes": 32293,
+      "sha256": "ad82c9dc9889c0d36ca228fd7cb50d10a74f029c3e0e8724d3e7996fbe32e2ea",
       "mode": "0o644"
     },
     {
@@ -479,8 +479,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 5027,
-      "sha256": "5d425c76e968b9f1ff1437df0ee5c6457c59afceb353f39a92d0d3a7cd4d85e0",
+      "bytes": 7220,
+      "sha256": "540d6683f9517923d7e6ef66a5e707075e6a8ded21578da0b6ef71ffc14d06b2",
       "mode": "0o644"
     },
     {
@@ -491,8 +491,8 @@
     },
     {
       "path": "server/CMakeLists.txt",
-      "bytes": 1115,
-      "sha256": "2d157b863dccb538209d5e2c293d64938bd29f19ff569f9a5c19c8510060f251",
+      "bytes": 1144,
+      "sha256": "f22167e5f6bd431bdd19a836cee505fd5be730d9af8b39ac4f8cd656138dccf2",
       "mode": "0o644"
     },
     {
@@ -581,8 +581,8 @@
     },
     {
       "path": "server/include/protocol/ApiQueries.h",
-      "bytes": 10908,
-      "sha256": "5659a62b66403d4f5b4b284a82e09dce3cc3dcece8e6adb2af8ce7115271f1b1",
+      "bytes": 11042,
+      "sha256": "42d214fd4dbb7881f8327e2c0e29bd0d2cc060c7e5541e81e7ec7a55936f497f",
       "mode": "0o644"
     },
     {
@@ -652,6 +652,12 @@
       "mode": "0o644"
     },
     {
+      "path": "server/include/worker/MachineRunPolicy.h",
+      "bytes": 1666,
+      "sha256": "927aae7eaf73e045cd518672622699594a22b189b1ec5c132f8bf17d4990d731",
+      "mode": "0o644"
+    },
+    {
       "path": "server/include/worker/NetworkWorkerDispatcher.h",
       "bytes": 1095,
       "sha256": "0d98c70265a33d4db7626c03a8ccc792425d4fc16c6c5033f5c352526266ec36",
@@ -671,8 +677,8 @@
     },
     {
       "path": "server/include/worker/WorkerManager.h",
-      "bytes": 2325,
-      "sha256": "39b80233840efcf0673f3debf4a303a4b0706a31292c1a3b0adbc85f3ee8917e",
+      "bytes": 3256,
+      "sha256": "5c245cca8215b4332d3d33f2e5878690f4a9d991279ec09957c6cddbc1921e68",
       "mode": "0o644"
     },
     {
@@ -748,6 +754,12 @@
       "mode": "0o644"
     },
     {
+      "path": "server/src/MachineRunPolicy.cpp",
+      "bytes": 10196,
+      "sha256": "7eb0cdaeca49d8c2a65b54244df69039c7d3d8e7d305a42a8fb7de96974a1633",
+      "mode": "0o644"
+    },
+    {
       "path": "server/src/main.cpp",
       "bytes": 3686,
       "sha256": "049a7ec552b354993a47bf9f1801567ef376d7dbd10f297f22e879dccc389853",
@@ -773,8 +785,8 @@
     },
     {
       "path": "server/src/ProtocolRouter.cpp",
-      "bytes": 40082,
-      "sha256": "48c5379a64014ba3721a4dc8cc0bad169d209b2edcba30b6deb7d3e064f7c501",
+      "bytes": 40906,
+      "sha256": "07896bd1e350f9801ddc092c466bea3bc0003b30c0fd55f759599ee3e5a67c7c",
       "mode": "0o644"
     },
     {
@@ -791,8 +803,8 @@
     },
     {
       "path": "server/src/Scheduler.cpp",
-      "bytes": 43231,
-      "sha256": "e3755a209b6b68a4046ed01848d65b103f12512a41d92ddc134cbd03ec60fd6f",
+      "bytes": 43532,
+      "sha256": "4699d9adbc0796ee60ff124102879994775cd133f81b638efd957682fd256dfc",
       "mode": "0o644"
     },
     {
@@ -839,20 +851,20 @@
     },
     {
       "path": "server/src/WorkerManager.cpp",
-      "bytes": 15669,
-      "sha256": "ae4fcdab818489ff0f9e88a9fc923fc59e171d01052f429c8334a8a0bb9458d4",
+      "bytes": 24872,
+      "sha256": "74fdf6c7b8796a2bc975deceb110259747311e91e4b502dc3e60bf288057d1db",
       "mode": "0o644"
     },
     {
       "path": "server/src/WorkerServer.cpp",
-      "bytes": 9846,
-      "sha256": "6eceb92fe40149d5c98e0276729c55740ef4c4e2ec392ffd2a3adbdcb77203c0",
+      "bytes": 9954,
+      "sha256": "47db299a1fc1ac73476fa79861ffb7865c8c72168cebfce0c0dd0dd3af302992",
       "mode": "0o644"
     },
     {
       "path": "server/src/WorkerSession.cpp",
-      "bytes": 6685,
-      "sha256": "324d938b6c5568b7dd469a206e55a1859698fa5fb293bbaaac898220cf916b14",
+      "bytes": 7217,
+      "sha256": "136324a6bd5ac7ea987a86289a8fce03413356a7d10f21f72f21a26388a2de1d",
       "mode": "0o644"
     },
     {
@@ -888,13 +900,13 @@
     {
       "path": "server/templates/place_design.json",
       "bytes": 556,
-      "sha256": "341b1376216daede5dcd95f853da12ce0ef171859c85ac75696f3556fa9f3cd3",
+      "sha256": "700d9f03180d555574dd37687276cfd7ebfb8c5276a1041bba1bb9ea71e04884",
       "mode": "0o644"
     },
     {
       "path": "server/templates/report_timing_summary.json",
       "bytes": 565,
-      "sha256": "17bd2f5ae1edeca8de388705dbf0358aafd84640109022ffda23025fc576b219",
+      "sha256": "b64bce9b80a204fd2f3ef65bc84bccf57197ac4e9e892bf75bb32c4f9cd8cbea",
       "mode": "0o644"
     },
     {
@@ -906,7 +918,7 @@
     {
       "path": "server/templates/route_design.json",
       "bytes": 556,
-      "sha256": "e75202118d6e32bf45fe5491febbdbddc2b7ba89903b0670644fbedcb6aa2c58",
+      "sha256": "a97d1516a7a812a77d89c96234bb3b7edd65f24146cb7620a50bdbb5725ef2ad",
       "mode": "0o644"
     },
     {
@@ -953,8 +965,14 @@
     },
     {
       "path": "worker/gcrp_worker.py",
-      "bytes": 35634,
-      "sha256": "9b95d0cdcb5441fec6854df76735a8c0777baeb1647ab9d7930da17113c90b01",
+      "bytes": 36062,
+      "sha256": "50679f894a17b3b73cb7466b9410a451eb5c1309f1dc483639c523312e292a4a",
+      "mode": "0o644"
+    },
+    {
+      "path": "worker/host_resources.py",
+      "bytes": 9297,
+      "sha256": "3859f03c7804d38ec0d7e2a51eeaa04b8e83469524714251739a2a46a537b5c7",
       "mode": "0o644"
     },
     {
@@ -1013,8 +1031,8 @@
     },
     {
       "path": "worker/slot_manager.py",
-      "bytes": 9198,
-      "sha256": "d019d57f9925d237f65fd0caca166e5b9baf71ad911f5765cda218f1ff6128ec",
+      "bytes": 11242,
+      "sha256": "a94f662612a79db0e805e785955133591b215da2cbb9a46e15b1872aec73f4ae",
       "mode": "0o644"
     },
     {

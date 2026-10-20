@@ -1,6 +1,45 @@
 #include "ConsoleSupport.h"
+#include <QTimeEdit>
 
 namespace {
+Json runPolicy(const Json& worker) {
+    return worker.contains("run_policy")&&worker["run_policy"].is_object()?worker["run_policy"]:Json::object();
+}
+QString policyMode(const QString& mode) {
+    return mode=="auto"?QStringLiteral("自动"):mode=="half"?QStringLiteral("半开"):mode=="full"?QStringLiteral("全开"):QStringLiteral("未提供");
+}
+QString policyReason(const Json& policy) {
+    const auto reason=text(policy,"reason");
+    const QMap<QString,QString> reasons{
+        {"upgrade_worker",QStringLiteral("请升级 Worker")},
+        {"telemetry_stale",QStringLiteral("资源采样过期")},
+        {"telemetry_missing",QStringLiteral("尚未收到资源采样")},
+        {"disk_low",QStringLiteral("磁盘可用空间不足")},
+        {"memory_critical",QStringLiteral("内存严重不足")},
+        {"adaptive_disabled",QStringLiteral("自适应资源保护已关闭")},
+        {"memory_pressure",QStringLiteral("内存压力偏高")},
+        {"swap_pressure",QStringLiteral("交换空间压力偏高")},
+        {"memory_stall",QStringLiteral("内存访问阻塞")},
+        {"io_pressure",QStringLiteral("磁盘读写压力偏高")},
+        {"cpu_warmup",QStringLiteral("CPU 负载预热观察中")},
+        {"cpu_busy",QStringLiteral("CPU 繁忙")},
+        {"gradual_recovery",QStringLiteral("资源恢复中，逐步增加槽位")},
+        {"cpu_high",QStringLiteral("CPU 使用率偏高")},{"memory_low",QStringLiteral("可用内存不足")},
+        {"resource_pressure",QStringLiteral("资源压力保护")},{"resource_waiting",QStringLiteral("等待资源采样")},
+        {"resource_stale",QStringLiteral("资源采样过期")},{"resource_invalid",QStringLiteral("资源采样无效")},
+        {"workday",QStringLiteral("工作日时段")},{"workday_half",QStringLiteral("工作日半开时段")},
+        {"off_hours",QStringLiteral("非工作时段")},{"weekend",QStringLiteral("周末全开")},
+        {"manual_full",QStringLiteral("临时全开")},{"manual_half",QStringLiteral("临时半开")},
+        {"override",QStringLiteral("临时模式生效")},{"disabled",QStringLiteral("计划已关闭")},
+        {"legacy",QStringLiteral("旧版 Worker 未提供资源信息")},{"normal",QStringLiteral("资源正常")}};
+    if(reasons.contains(reason))return reasons.value(reason);
+    const auto resource=text(policy,"resource_status");
+    if(resource=="waiting")return QStringLiteral("等待资源采样");
+    if(resource=="stale")return QStringLiteral("资源采样过期");
+    if(resource=="invalid")return QStringLiteral("资源采样无效");
+    if(resource=="legacy")return QStringLiteral("旧版 Worker 未提供资源信息");
+    return reason=="—"||reason.isEmpty()?QStringLiteral("未提供原因"):QStringLiteral("服务端策略原因：%1").arg(reason);
+}
 uint64_t occupiedSlots(const Json& worker) {
     return qMax(uint64_t(worker.value("used",0)),worker.value("current_tasks_total",uint64_t(0)));
 }
@@ -13,17 +52,24 @@ QString workState(const Json& worker,bool stale) {
     if(connection=="OFFLINE")return busy?QStringLiteral("OFFLINE · 失联待处理"):QStringLiteral("OFFLINE · 连接中断");
     if(worker.contains("current_tasks")&&worker["current_tasks"].is_array())for(const auto& task:worker["current_tasks"])
         if(task.value("recovery_required",false))return QStringLiteral("UNKNOWN · 待恢复确认");
+    const auto policy=runPolicy(worker);
     if(connection=="DRAINING"||!worker.value("accepting_requested",worker.value("accepting_tasks",true)))
         return busy?QStringLiteral("DRAINING · 下线中"):QStringLiteral("OFFLINE · 已下线");
     const auto phase=text(worker.value("maintenance",Json::object()),"state");
     if(phase=="PENDING")return QStringLiteral("MAINTENANCE · 等待更新");
     if(phase=="RUNNING")return QStringLiteral("MAINTENANCE · 更新中");
     if(phase=="FAILED")return QStringLiteral("OFFLINE · 更新失败");
+    if(!policy.empty()){
+        const bool allowed=policy.value("slot_allowed",true),resume=policy.value("resume_allowed",true);
+        if(busy)return !allowed||!resume||!worker.value("accepting_requested",true)?QStringLiteral("DRAINING · 完成后停派"):QStringLiteral("ONLINE · 执行中");
+        if(!resume)return QStringLiteral("模式禁用");
+        if(!allowed)return QStringLiteral("资源保护 / 待命");
+    }
     if(!dispatchEnabled(worker))return QStringLiteral("OFFLINE · 暂不可调度");
     if(worker.contains("current_tasks")&&worker["current_tasks"].is_array())for(const auto& task:worker["current_tasks"]){
         if(text(task,"status")=="RUNNING")return QStringLiteral("ONLINE · 执行中");
     }
-    return busy?QStringLiteral("ONLINE · 准备执行"):QStringLiteral("ONLINE · 已上线");
+    return busy?QStringLiteral("ONLINE · 准备执行"):QStringLiteral("待命");
 }
 }
 
@@ -63,11 +109,15 @@ void MainWindow::showWorkers() {
         if(!demo_&&!w.value("control_supported",false))slotsTable_->item(row,0)->setToolTip(QStringLiteral("此进程未声明维护协议 V1，可能为旧版 Worker；槽位来自 Server 注册/心跳，不按磁盘目录推算。"));
         if(!w.value("registration_observed",true))slotsTable_->item(row,0)->setToolTip(QStringLiteral("Server 重启后保留的未确认执行。本进程尚未收到该 Worker 注册；暂按原 Worker ID 单独列出，不推测主机名。"));
         const bool accepting=w.value("accepting_tasks",true),requested=w.value("accepting_requested",accepting);
+        const auto policy=runPolicy(w);
         const auto maintenance=w.value("maintenance",Json::object());
         const auto phase=QString::fromStdString(maintenance.value("state",std::string("IDLE")));
         const bool pending=phase=="PENDING"||phase=="RUNNING";
         cell(slotsTable_,row,2,QStringLiteral("连接：")+text(w,"status")+"\n"+
             (text(w,"status")=="OFFLINE"?QStringLiteral("调度：不可用 / 等待重连"):
+             !requested?QStringLiteral("调度：已下线"):
+             !policy.value("resume_allowed",true)?QStringLiteral("调度：模式禁用（当前案例继续）"):
+             !policy.value("slot_allowed",true)?QStringLiteral("调度：资源保护 / 待命"):
              accepting?QStringLiteral("调度：已上线"):occupiedSlots(w)>0?QStringLiteral("调度：下线中 / 当前案例继续"):QStringLiteral("调度：已下线")));
         if(workersStale_&&!demo_)slotsTable_->item(row,2)->setText(QStringLiteral("上次快照 · ")+slotsTable_->item(row,2)->text());
         const auto maintenanceText=phase=="PENDING"?QStringLiteral("等待当前案例完成后更新"):phase=="RUNNING"?QStringLiteral("SVN 更新中"):phase=="FAILED"?QStringLiteral("更新失败 / 保持下线"):phase=="SUCCEEDED"?QStringLiteral("更新完成"):QString{};
@@ -75,7 +125,9 @@ void MainWindow::showWorkers() {
         slotsTable_->item(row,2)->setToolTip(QString::fromStdString(maintenance.dump(2)));
         auto controls=new QWidget;auto actions=new QHBoxLayout(controls);actions->setContentsMargins(6,2,6,2);actions->setSpacing(8);
         const auto worker=text(w,"worker_id");
-        auto toggle=new QPushButton(requested?QStringLiteral("下线"):QStringLiteral("上线"));toggle->setObjectName("slotAcceptButton");
+        const bool resumeAllowed=policy.value("resume_allowed",true);
+        const bool pauseAction=requested&&(resumeAllowed||occupiedSlots(w)>0);
+        auto toggle=new QPushButton(pauseAction?QStringLiteral("下线"):QStringLiteral("上线"));toggle->setObjectName("slotAcceptButton");
         auto update=new QPushButton(QStringLiteral("更新"));update->setObjectName("slotUpdateButton");actions->addWidget(toggle);actions->addWidget(update);
         auto recover=new QPushButton(QStringLiteral("故障恢复…"));recover->setObjectName("slotRecoveryButton");actions->addWidget(recover);
         // Cell widgets are not reliably included by ResizeToContents on older Qt5.
@@ -86,13 +138,14 @@ void MainWindow::showWorkers() {
         const bool enabled=(demo_||(!workersStale_&&operations_.contains("control_workers")))&&!managementPending_&&online;
         toggle->setToolTip(QStringLiteral("上线/下线只改变调度资格，不断开连接，也不终止正在运行的 testcase。"));
         update->setToolTip(QStringLiteral("排空当前任务后更新独立 SVN 副本；需要新版 Worker 支持。"));
-        toggle->setEnabled(enabled&&(requested||!pending));
+        toggle->setEnabled(enabled&&(pauseAction||(!pending&&resumeAllowed)));
+        if(!resumeAllowed)toggle->setToolTip(QStringLiteral("当前模式或资源保护不允许上线；运行中的任务可以手动下线并等待完成。")+policyReason(policy));
         update->setEnabled(enabled&&!pending&&(demo_||w.value("control_supported",false)));
         const bool recoverable=text(w,"status")=="OFFLINE"&&w.value("current_tasks_total",uint64_t(0))>0;
         anyRecoverable=anyRecoverable||recoverable;
         recover->setEnabled(!demo_&&!workersStale_&&!managementPending_&&operations_.contains("recover_offline_workers")&&recoverable);
         recover->setToolTip(QStringLiteral("仅处理失联 slot 的未完成任务；必须先确认原执行进程已停止。不是远程关机，也不会自动重新上线。"));
-        connect(toggle,&QPushButton::clicked,this,[this,worker,requested]{controlWorkers(false,worker,requested?"pause":"resume");});
+        connect(toggle,&QPushButton::clicked,this,[this,worker,pauseAction]{controlWorkers(false,worker,pauseAction?"pause":"resume");});
         connect(update,&QPushButton::clicked,this,[this,worker]{controlWorkers(false,worker,"update");});
         connect(recover,&QPushButton::clicked,this,[this,worker]{recoverOfflineWorkers(false,worker);});
         slotsTable_->setCellWidget(row,4,controls);
@@ -124,6 +177,88 @@ void MainWindow::showWorkers() {
     for(auto button:hostControlButtons_){button->setEnabled((demo_||(!workersStale_&&operations_.contains("control_workers")))&&anyOnline&&!managementPending_);button->setToolTip(QStringLiteral("整机操作仅针对当前已连接 slots；全部上线不远程启动失联机器。"));}
     hostRecoveryButton_->setEnabled(!demo_&&!workersStale_&&!managementPending_&&operations_.contains("recover_offline_workers")&&anyRecoverable);
     hostRecoveryButton_->setToolTip(QStringLiteral("只处理所选服务器中失联且有未完成任务的 slots，已连接 slots 不受影响。"));
+    Json policy=Json::object();
+    for(const auto& w:workers_)if(text(w,"machine_id")==machines_->currentText()){policy=runPolicy(w);break;}
+    const bool supported=policy.value("supported",false);
+    for(auto button:hostPolicyButtons_){
+        const bool canEdit=supported||(button->objectName()=="hostPolicyPlan"&&policy.value("enabled",false));
+        button->setEnabled(canEdit&&anyOnline&&!workersStale_&&!managementPending_&&operations_.contains("control_workers"));
+        button->setToolTip(supported?QStringLiteral("半开 / 全开默认临时生效 4 小时；Auto 恢复每周计划。模式切换不会自动上线手动下线的槽位。"):
+            QStringLiteral("请升级 Worker 和 Server，以支持主机运行策略。"));
+    }
+    if(policy.empty())hostPolicySummary_->setText(QStringLiteral("Server 未提供运行策略；请升级 Server / Worker。"));
+    else if(!supported)hostPolicySummary_->setText(QStringLiteral("此主机不支持运行策略，请升级 Worker / Server。"));
+    else {
+        QString expiry=QStringLiteral("无临时覆盖");const auto until=policy.value("override_until_ms",int64_t(0));
+        if(until>0)expiry=QStringLiteral("临时覆盖至 %1（按本机时区显示）").arg(QDateTime::fromMSecsSinceEpoch(until).toLocalTime().toString("yyyy-MM-dd HH:mm t"));
+        hostPolicySummary_->setText((workersStale_?QStringLiteral("【过期快照】 "):QString())+
+            QStringLiteral("配置 %1 → 生效 %2 · 模式上限 %3 / 目标 %4 / 注册 %5 · 活动任务 %6\n%7 · %8 · %9\n每周计划按 Server 本地时间执行；模式切换保留手动下线状态。")
+            .arg(policyMode(text(policy,"configured_mode"))).arg(policyMode(text(policy,"effective_mode")))
+            .arg(text(policy,"mode_limit")).arg(text(policy,"target_limit")).arg(text(policy,"reported_slots")).arg(text(policy,"active_tasks"))
+            .arg(policy.value("enabled",false)?QStringLiteral("策略启用"):QStringLiteral("策略关闭"))
+            .arg(policyReason(policy)).arg(expiry));
+        hostPolicySummary_->setToolTip(QString::fromStdString(policy.dump(2)));
+        const QMap<QString,QString> resourceNames{{"fresh",QStringLiteral("资源采样有效")},{"waiting",QStringLiteral("等待资源采样")},
+            {"stale",QStringLiteral("资源采样过期")},{"invalid",QStringLiteral("资源采样无效")},{"legacy",QStringLiteral("旧版资源上报")}};
+        hostPolicySummary_->setText(hostPolicySummary_->text()+"\n"+resourceNames.value(text(policy,"resource_status"),QStringLiteral("未提供资源状态")));
+    }
+}
+
+void MainWindow::setHostPolicy(const QString& machine,const Json& policy) {
+    if(machine.isEmpty()||managementPending_||workersStale_||!operations_.contains("control_workers"))return;
+    bool supported=false;
+    for(const auto& w:workers_)if(text(w,"machine_id")==machine&&runPolicy(w).value("supported",false))supported=true;
+    if(!supported&&(!policy.contains("enabled")||policy["enabled"]!=false))return;
+    Json request={{"machine_id",machine.toStdString()},{"action","policy"},
+        {"operation_id",QUuid::createUuid().toString().mid(1,36).toStdString()},{"policy",policy}};
+    managementPending_=true;showWorkers();
+    rpc_.request("control_workers",request,[this](RpcReply r){
+        managementPending_=false;
+        workersStale_=true;updateFreshness();showWorkers();
+        // A snapshot may still be loading when control ACK arrives. Do not let
+        // refresh() silently skip the new policy and leave stale buttons visible.
+        auto retry=findChild<QTimer*>("policySnapshotRetry");
+        if(!retry){
+            retry=new QTimer(this);retry->setObjectName("policySnapshotRetry");retry->setInterval(100);
+            connect(retry,&QTimer::timeout,this,[this,retry]{if(loading_||submitting_||regressionLoading_)return;retry->stop();refresh();});
+        }
+        retry->start();
+        if(!r.ok){note(QStringLiteral("运行策略请求未确认：")+r.error+QStringLiteral("。正在重新核对状态。"),true);return;}
+        note(QStringLiteral("运行策略请求已接受；正在刷新，手动下线状态保留。"));
+    });
+}
+
+void MainWindow::editHostPolicy() {
+    const auto machine=machines_->currentText();Json policy=Json::object();
+    for(const auto& w:workers_)if(text(w,"machine_id")==machine){policy=runPolicy(w);break;}
+    if((!policy.value("supported",false)&&!policy.value("enabled",false))||workersStale_||managementPending_)return;
+    const auto plan=policy.contains("plan")&&policy["plan"].is_object()?policy["plan"]:Json::object();
+    QSignalBlocker blockRefresh(refreshTimer_),blockFreshness(freshnessTimer_);
+    QDialog dialog(this);dialog.setWindowTitle(QStringLiteral("每周计划 · ")+machine);dialog.setObjectName("hostPolicyDialog");
+    auto box=new QVBoxLayout(&dialog);auto hint=new QLabel(QStringLiteral("按 Server 本地时间执行：工作日时段半开，其余时间及周末全开。默认周一至周五 09:00–19:00。模式切换不会自动上线手动下线槽位。"));hint->setWordWrap(true);box->addWidget(hint);
+    auto form=new QFormLayout;box->addLayout(form);
+    auto mode=new QComboBox;mode->addItem(QStringLiteral("Auto · 每周计划"),"auto");mode->addItem(QStringLiteral("临时半开"),"half");mode->addItem(QStringLiteral("临时全开"),"full");
+    mode->setCurrentIndex(qMax(0,mode->findData(text(policy,"configured_mode"))));form->addRow(QStringLiteral("模式"),mode);
+    auto duration=new QSpinBox;duration->setRange(1,168);duration->setValue(4);duration->setSuffix(QStringLiteral(" 小时"));form->addRow(QStringLiteral("临时模式时长"),duration);
+    auto enabled=new QCheckBox(QStringLiteral("启用运行策略（关闭后仅人工控制）"));enabled->setChecked(plan.value("enabled",true));form->addRow(enabled);
+    auto adaptive=new QCheckBox(QStringLiteral("自动收缩 / 恢复并发（严重资源不足仍保护）"));adaptive->setChecked(plan.value("adaptive",true));form->addRow(adaptive);
+    auto days=new QWidget;auto daysRow=new QHBoxLayout(days);daysRow->setContentsMargins(0,0,0,0);QList<QCheckBox*> checks;
+    const QStringList names{QStringLiteral("一"),QStringLiteral("二"),QStringLiteral("三"),QStringLiteral("四"),QStringLiteral("五"),QStringLiteral("六"),QStringLiteral("日")};
+    const auto workdays=plan.value("workdays",Json::array({1,2,3,4,5}));
+    for(int i=1;i<=7;++i){auto check=new QCheckBox(names[i-1]);check->setChecked(std::find(workdays.begin(),workdays.end(),Json(i))!=workdays.end());checks<<check;daysRow->addWidget(check);}form->addRow(QStringLiteral("工作日"),days);
+    auto start=new QTimeEdit;auto end=new QTimeEdit;start->setDisplayFormat("HH:mm");end->setDisplayFormat("HH:mm");
+    start->setTime(QTime(0,0).addSecs(qBound(0,plan.value("day_start_minute",540),1439)*60));end->setTime(QTime(0,0).addSecs(qBound(0,plan.value("day_end_minute",1140),1439)*60));
+    form->addRow(QStringLiteral("半开开始"),start);form->addRow(QStringLiteral("半开结束"),end);
+    auto half=new QSpinBox;half->setRange(0,128);half->setValue(plan.value("half_slots",0));half->setSpecialValueText(QStringLiteral("自动 · 槽位数的一半向上取整"));form->addRow(QStringLiteral("半开槽位数"),half);
+    auto buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("保存"));buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));box->addWidget(buttons);
+    connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+    connect(buttons,&QDialogButtonBox::accepted,&dialog,[&]{if(start->time()>=end->time()){QMessageBox::warning(&dialog,QStringLiteral("时段无效"),QStringLiteral("开始时间必须早于结束时间。"));return;}dialog.accept();});
+    if(dialog.exec()!=QDialog::Accepted)return;
+    Json selected=Json::array();for(int i=0;i<checks.size();++i)if(checks[i]->isChecked())selected.push_back(i+1);
+    setHostPolicy(machine,{{"mode",mode->currentData().toString().toStdString()},{"duration_minutes",duration->value()*60},
+        {"workdays",selected},{"day_start_minute",start->time().hour()*60+start->time().minute()},
+        {"day_end_minute",end->time().hour()*60+end->time().minute()},{"half_slots",half->value()},
+        {"adaptive",adaptive->isChecked()},{"enabled",enabled->isChecked()}});
 }
 
 void MainWindow::recoverOfflineWorkers(bool machine,const QString& target) {
@@ -184,7 +319,7 @@ void MainWindow::controlWorkers(bool machine,const QString& target,const QString
         if(!ok)return;scope=choice==QStringLiteral("galaxcore/test2")?"test2":"all";
     }
     const auto explanation=action=="pause"?QStringLiteral("下线后不再派发新任务，已分配 / 运行中的 testcase 正常结束；通信连接保留。"):
-        action=="resume"?QStringLiteral("仅将当前已连接、未退出的 slots 上线；失联机器不会被远程启动。维护失败后请先检查工作副本。"):
+        action=="resume"?QStringLiteral("仅将当前已连接、未退出且运行策略允许的 slots 上线；Server 跳过模式或资源保护排除的槽位。失联机器不会被远程启动。维护失败后请先检查工作副本。"):
         QStringLiteral("先停止派发，等待当前执行和结果上报结束，再更新 SVN。不会 revert 或删除本地修改；冲突会保持停派。成功后恢复更新前的接单意向。");
     if(QMessageBox::question(this,QStringLiteral("确认工作机管理操作"),target+"\n"+explanation)!=QMessageBox::Yes)return;
     if(demo_){

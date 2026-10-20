@@ -25,6 +25,7 @@ add_library(gcrp_server_core STATIC
     src/StateStore.cpp
     src/WorkerConnectionRegistry.cpp
     src/WorkerManager.cpp
+    src/MachineRunPolicy.cpp
     src/WorkerServer.cpp
     src/WorkerSession.cpp
     src/WorkerSessionHandler.cpp

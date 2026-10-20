@@ -60,13 +60,21 @@ void WorkerSession::handleRequest(const ProtocolMessage& request) {
         auto conn = getConnection();
         if (!conn || !conn->isConnected()) return;
         const bool recovering = request.data.contains("recovery_version");
+        int machine_slots=0;
+        if(request.data.contains("resource_version")){
+            if(request.data["resource_version"]!=1||!request.data.contains("machine_slots")||
+               !request.data["machine_slots"].is_number_integer()||request.data["machine_slots"]<1||request.data["machine_slots"]>128){
+                reply(request.request_id,ResponseCode::INVALID_REQUEST,"invalid resource registration");return;
+            }
+            machine_slots=request.data["machine_slots"].get<int>();
+        }
         if (recovering && (request.data["recovery_version"] != 1 || dto.slots != 1)) {
             reply(request.request_id, ResponseCode::INVALID_REQUEST, "recovery v1 requires one slot");
             return;
         }
         if (recovering) router_.holdWorker(dto.worker_id);
         if (!worker_manager_.registerWorker(dto.worker_id, dto.hostname, dto.slots,
-                                            dto.machine_id, dto.slot_id)) {
+                                            dto.machine_id, dto.slot_id,machine_slots)) {
             reply(request.request_id, ResponseCode::INVALID_REQUEST, "invalid worker registration");
             return;
         }

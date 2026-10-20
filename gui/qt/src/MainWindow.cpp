@@ -3,7 +3,7 @@
 MainWindow::MainWindow(GuiSettings settings)
     : settings_(std::move(settings)), rpc_(this) {
     setWindowTitle(QStringLiteral("GalaxCore Regression Platform 调度控制台 · UI v3")+
-        (demo_?QStringLiteral("【离线演示 · 非真实工作机】"):QStringLiteral(" · ")+settings_.host+":"+QString::number(settings_.port))); resize(1280,820);
+        (demo_?QStringLiteral("【离线演示 · 非真实工作机】"):QStringLiteral(" · ")+settings_.host+":"+QString::number(settings_.port))); resize(1473,900);
     setMinimumSize(1100,720);
     auto central = new QWidget; central->setObjectName("surface"); setCentralWidget(central);
     auto shell = new QHBoxLayout(central); shell->setContentsMargins(0,0,0,0); shell->setSpacing(0);
@@ -43,7 +43,7 @@ MainWindow::MainWindow(GuiSettings settings)
     breadcrumb_=new QLabel(QStringLiteral("工作空间　 /　 任务管理"));breadcrumb_->setObjectName("breadcrumb");bar->addWidget(breadcrumb_);
     bar->addStretch();connection_=new QLabel;connection_->setObjectName("connection");connection_->setTextFormat(Qt::PlainText);
     connection_->setMaximumWidth(360);connection_->setWordWrap(true);bar->addWidget(connection_);
-    auto refresh=new QPushButton(QStringLiteral("刷新快照"));bar->addWidget(refresh);
+    auto refresh=new QPushButton(QStringLiteral("刷新"));bar->addWidget(refresh);
     auto role=new QLabel(QStringLiteral("受信任内网 · 未启用认证"));role->setToolTip(QStringLiteral("可连接 Server 的用户均可管理工作机和删除已结束的任务记录。"));bar->addWidget(role);
     connect(refresh,&QPushButton::clicked,this,[this]{this->refresh();});bodyLayout->addWidget(top);
     if(demo_){auto demoBanner=new QLabel(QStringLiteral("交互评审模式　 ·　 示例数据与真实 Server 完全隔离，不发送任何任务"));demoBanner->setObjectName("demoBanner");bodyLayout->addWidget(demoBanner);}

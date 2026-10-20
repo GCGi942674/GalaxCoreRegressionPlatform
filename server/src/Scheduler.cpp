@@ -339,9 +339,12 @@ std::optional<TaskId> Scheduler::submitTask(Task task, const std::string& submis
 std::vector<TaskAssignment> Scheduler::schedule() {
     std::lock_guard<std::mutex> lock(mutex_);
     size_t active = 0;
+    std::map<WorkerId,uint32_t> known_usage;
     for (const auto& row : tasks_)
         if (row.second.getStatus() == TaskStatus::ASSIGNED ||
-            row.second.getStatus() == TaskStatus::RUNNING) ++active;
+            row.second.getStatus() == TaskStatus::RUNNING){++active;++known_usage[row.second.getWorkerId()];}
+    {std::lock_guard<std::mutex> workers_lock(worker_manager_.mutex_);
+        if(known_usage!=worker_manager_.known_task_usage_){worker_manager_.known_task_usage_.swap(known_usage);++worker_manager_.generation_;}}
     const size_t remaining = active >= max_running_tasks_ ? 0 : max_running_tasks_ - active;
     // Work on a copy: allocation failure must not consume the real queue.
     auto pending = task_queue_;

@@ -230,6 +230,13 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
         }
         case MessageType::CONTROL_WORKERS: {
             try {
+                if(request.data.value("action",std::string())=="policy"){
+                    Api::validate(request.data,{"machine_id","action","operation_id","policy"});
+                    auto result=worker_manager_.setRunPolicy(Api::text(request.data,"machine_id",64),Api::text(request.data,"operation_id",128),request.data.at("policy"));
+                    LOG_INFO(LogModule::WORKER,"machine run policy saved: "+request.data.dump());
+                    try{scheduling_driver_.requestSchedule();}catch(const std::exception& e){LOG_WARN(LogModule::SCHEDULER,e.what());}
+                    return buildResponse(request,ResponseCode::OK,"ok",result);
+                }
                 Api::validate(request.data,{"machine_id","worker_id","action","operation_id","scope"});
                 const auto machine=Api::text(request.data,"machine_id",256),worker=Api::text(request.data,"worker_id",256);
                 if(machine.empty()==worker.empty())throw std::invalid_argument("choose machine_id or worker_id");
@@ -535,6 +542,7 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
                 return buildResponse(request, ResponseCode::NOT_FOUND, "worker not found");
             }
             try {
+                if(request.data.contains("resource_report"))worker_manager_.reportResources(heartbeat_req.worker_id,request.data["resource_report"]);
                 auto management=worker_manager_.managementHeartbeat(heartbeat_req.worker_id,
                     request.data.value("maintenance_ack",nlohmann::json(nullptr)));
                 scheduling_driver_.requestSchedule();

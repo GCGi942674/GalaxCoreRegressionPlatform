@@ -9,12 +9,14 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 from recovery_journal import remove, write_json
 from runtime_config import load_config
 from slot_identity import machine_identity, migrate_legacy_slots, slot_names
 from slot_process import ExistingWorker
+from host_resources import HostResources
 
 
 VALID_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
@@ -65,6 +67,9 @@ class SlotManager:
         self.restart_after = {}
         self.stopping = False
         self.reload = False
+        self.resources = HostResources(self.machine_root / '.resources.json', self.machine)
+        self.resource_resample = threading.Event()
+        self.resource_stop = threading.Event()
         # A killed Manager need not kill its Workers. Validate ALL survivors
         # before starting/draining anything; don't pretend they are our children.
         adopted = {}
@@ -80,9 +85,37 @@ class SlotManager:
             print('[MANAGER] adopted {} pid={}'.format(slot, process.pid), flush=True)
             if slot not in self.desired:
                 self.drain(slot)
+        self.update_resource_settings()
+        self.resource_thread = threading.Thread(target=self.resource_loop,
+                                                name='host-resources', daemon=True)
+        self.resource_thread.start()
 
     def output(self, slot):
         return self.machine_root / slot
+
+    def update_resource_settings(self):
+        # Publish immutable inputs from the supervisor; the sampler never walks
+        # its mutable children dictionary and performs all filesystem I/O itself.
+        slots = set(self.desired) | set(self.children)
+        paths = [self.output_root, self.slots_root]
+        for slot in slots:
+            paths.extend([self.output(slot), self.slots_root / self.worker_id(slot) / 'galaxcore'])
+        self.resource_settings = (len(self.desired), tuple(paths))
+
+    def sample_resources(self):
+        count, paths = self.resource_settings
+        self.resources.sample(count, paths)
+
+    def resource_loop(self):
+        # Exactly one sampler. A blocked filesystem read must never hold up
+        # supervision or cause replacement threads to accumulate.
+        while not self.resource_stop.is_set():
+            self.resource_resample.clear()
+            started = time.monotonic()
+            self.sample_resources()
+            if self.resource_stop.is_set():
+                return
+            self.resource_resample.wait(max(0.0, 10 - (time.monotonic() - started)))
 
     def worker_id(self, slot):
         return self.machine + '-' + slot
@@ -118,7 +151,10 @@ class SlotManager:
         args = [sys.executable, '-B', '-u', str(Path(__file__).with_name('gcrp_worker.py')),
                 '--worker-id', self.worker_id(slot), '--machine-id', self.machine,
                 '--slot-id', slot, '--output', str(output)]
-        process = subprocess.Popen(args, close_fds=True)
+        env = os.environ.copy()
+        env['GCRP_RESOURCE_SNAPSHOT'] = str(self.resources.path)
+        env['GCRP_MACHINE_SLOTS'] = str(len(self.desired))
+        process = subprocess.Popen(args, close_fds=True, env=env)
         self.children[slot] = (process, time.monotonic())
         print('[MANAGER] started {} pid={}'.format(slot, process.pid), flush=True)
 
@@ -137,6 +173,8 @@ class SlotManager:
             if slot not in slots and slot in self.children:
                 self.drain(slot)
         self.desired = slots
+        self.update_resource_settings()
+        self.resource_resample.set()
         print('[MANAGER] slots now: ' + ','.join(slots), flush=True)
 
     def run(self):
@@ -175,8 +213,12 @@ class SlotManager:
                         if (slot not in self.children and self.failures.get(slot, 0) < 5 and
                                 time.monotonic() >= self.restart_after.get(slot, 0)):
                             self.start(slot)
+                self.update_resource_settings()
                 time.sleep(.2)
         finally:
+            self.resource_stop.set()
+            self.resource_resample.set()
+            # Do not join: the daemon may be stuck in a filesystem syscall.
             # A manager crash does not revoke the slot process's OS identity lock.
             os.close(self.lock_fd)
 

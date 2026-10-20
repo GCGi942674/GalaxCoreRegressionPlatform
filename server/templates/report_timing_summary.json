@@ -20,8 +20,8 @@
     "msk_cmp": 0,
     "bgn_cmp": 0,
     "dcp_cmp": 0,
-    "rpx_cmp": 0,
+    "rpx_cmp": 1,
     "shape_cmp": 0,
-    "checksum_cmp": 1
+    "checksum_cmp": 0
   }
 }

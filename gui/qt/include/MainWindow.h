@@ -49,6 +49,10 @@ private:
     QComboBox* machines_{};
     QListWidget* hostsList_{};
     QList<QPushButton*> hostControlButtons_;
+    QList<QPushButton*> hostPolicyButtons_;
+    QLabel* hostPolicySummary_{};
+    void setHostPolicy(const QString& machine, const Json& policy);
+    void editHostPolicy();
     QPushButton* hostRecoveryButton_{};
     bool managementPending_{false};
     QCheckBox* showOffline_{};
