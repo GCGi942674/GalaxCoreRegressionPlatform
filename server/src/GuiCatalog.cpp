@@ -55,7 +55,7 @@ nlohmann::json GuiCatalog::scan() const {
             }
             if(name!="run.tcl"||!i->is_regular_file()||i->path().parent_path()==root)continue;
             auto relative=i->path().lexically_relative(root).generic_string();
-            static const std::regex safe("[A-Za-z0-9_. /-]+");
+            static const std::regex safe("[A-Za-z0-9_.+/-]+");
             // Same safe-path contract as RegressionPayload; spaces are not accepted.
             if(relative.size()>512||relative.find(' ')!=std::string::npos||!std::regex_match(relative,safe))continue;
             bytes+=relative.size();paths.push_back(relative);

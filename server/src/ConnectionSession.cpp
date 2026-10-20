@@ -33,6 +33,7 @@ void ConnectionSession::onMessage(const std::string& text) {
     // A valid envelope with a client request type establishes CLIENT even if its
     // business payload is rejected. No role switching during this connection.
     role_ = ConnectionRole::CLIENT;
+    if(auto conn=connection_.lock())conn->setLogIdentity("CLIENT");
     try {
         sendResponse(router_.handle(request));
     } catch (const nlohmann::json::exception&) {
@@ -50,9 +51,12 @@ void ConnectionSession::handleClose() {
 bool ConnectionSession::authorizeLog(const ProtocolMessage& request) {
     if(request.type==MessageType::LOG_APPEND||request.type==MessageType::LOG_STATE)
         return role_==ConnectionRole::WORKER&&worker_.permitsLogUpload(request);
-    if(request.type!=MessageType::QUERY_LOGS&&request.type!=MessageType::READ_LOG&&request.type!=MessageType::QUERY_DAILY_PLAN)return false;
+    if(request.type!=MessageType::QUERY_LOGS&&request.type!=MessageType::READ_LOG&&request.type!=MessageType::QUERY_DAILY_PLAN&&
+       request.type!=MessageType::QUERY_REGRESSION&&request.type!=MessageType::QUERY_PROGRESS&&request.type!=MessageType::QUERY_ROLLBACK)return false;
     if(role_==ConnectionRole::WORKER)return false;
-    role_=ConnectionRole::CLIENT;return true;
+    role_=ConnectionRole::CLIENT;
+    if(auto conn=connection_.lock())conn->setLogIdentity("CLIENT");
+    return true;
 }
 
 void ConnectionSession::reply(uint64_t id, ResponseCode code, const std::string& message) {
@@ -78,7 +82,7 @@ void ConnectionSession::sendResponse(const ProtocolMessage& response) {
             throw std::runtime_error("fallback serialization failed");
     }
     auto connection = connection_.lock();
-    if (connection && !connection->sendPacket(MessageCodec::encode(text)))
-        LOG_WARN(LogModule::NETWORK, "client response queue rejected");
+    if (connection && !connection->sendResponsePacket(MessageCodec::encode(text)))
+        LOG_WARN(LogModule::NETWORK, "client response queue rejected, "+connection->logContext());
 }
 } // namespace GCRP

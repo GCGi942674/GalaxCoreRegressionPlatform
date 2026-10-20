@@ -68,12 +68,8 @@ void MainWindow::queryDaily(bool next) {
             for(const auto key:{"ALL","REGRESSION","IMPROVEMENT","STABLE_PASS","STABLE_FAIL","OTHER"})counts.at(key).get<uint64_t>();
             regressionGeneration_=generation;regressionInstance_=reply.instance;
             regressionRows_=reply.result.at("items");if(!regressionRows_.is_array())throw std::runtime_error("daily items must be an array");
-            // The server supplies all available templates for these dates, not just
-            // the current page. Never turn a missing stage into a silent ALL query.
-            {QSignalBlocker block(regressionStage_);regressionStage_->clear();regressionStage_->addItem(QStringLiteral("全部阶段"),"");
-                for(const auto& name:reply.result.at("templates")){auto value=QString::fromStdString(name.get<std::string>());regressionStage_->addItem(value,value);}
-                if(!stage.isEmpty()&&regressionStage_->findData(stage)<0)regressionStage_->addItem(stage+QStringLiteral(" · 暂无结果"),stage);
-                regressionStage_->setCurrentIndex(qMax(0,regressionStage_->findData(stage)));}
+            // Stage choices belong to the shared catalog, not historical results.
+            // An empty result must not remove the selected template.
             for(auto it=regressionCards_.begin();it!=regressionCards_.end();++it)
                 it.value()->findChild<QLabel*>("dailyMetricValue")->setText(QString::number(counts.at(it.key().toStdString()).get<uint64_t>()));
             for(auto it=regressionPills_.begin();it!=regressionPills_.end();++it){

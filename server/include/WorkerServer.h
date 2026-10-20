@@ -58,6 +58,11 @@ private:
     std::condition_variable log_cv_;
     std::deque<std::function<void()>> log_jobs_;
     bool log_stopping_{false};
+    std::vector<std::thread> query_threads_;
+    std::mutex query_mutex_;
+    std::condition_variable query_cv_;
+    std::deque<std::function<void()>> query_jobs_;
+    bool query_stopping_{false};
 };
 
 } // namespace GCRP

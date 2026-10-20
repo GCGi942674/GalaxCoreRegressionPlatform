@@ -19,7 +19,7 @@ struct ServerMetricsSnapshot {
   uint64_t messages_received{0};
   uint64_t messages_decoded_ok{0};
   uint64_t messages_decoded_invalid{0};
-  uint64_t responses_sent{0};
+  uint64_t responses_sent{0}; // Legacy field name: responses accepted into send queue, not delivery ACKs.
 
   uint64_t heartbeat_requests{0};
   uint64_t heartbeat_responses{0};

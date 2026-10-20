@@ -54,6 +54,12 @@ public:
   void send(const std::string &data);
   // true means accepted into the owner loop, not delivered to the peer.
   bool sendPacket(const std::vector<char> &packet);
+  // Counts queue acceptance only, never peer delivery. Dispatch packets are not responses.
+  bool sendResponsePacket(const std::vector<char>& packet, bool heartbeat = false);
+  void setResponseQueuedCallback(std::function<void(bool)> cb);
+  void setLogIdentity(const std::string& role, const std::string& worker = "");
+  std::string logContext() const;
+  bool isWorkerConnection() const;
   void setWriteReadyCallback(std::function<void(const std::shared_ptr<Connection>&)> cb);
 
   ConnState state() const;
@@ -79,6 +85,11 @@ public:
 
 private:
   int fd_;
+  uint64_t connection_id_{0};
+  std::string peer_{"unknown"};
+  mutable std::mutex identity_mutex_;
+  std::string log_role_{"UNKNOWN"}, log_worker_;
+  std::function<void(bool)> on_response_queued_;
   std::atomic<ConnState> state_;
   MessageCallback on_message_;
   std::function<void(const std::shared_ptr<Connection>&)> on_write_ready_;

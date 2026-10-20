@@ -77,6 +77,23 @@ void bindQueryIndex(Statement& statement,const Task& task){
     statement.number(6,has_case?1:0);statement.number(7,source=="scheduled"&&!stage.empty()&&validQueryDate(day)?1:0);
     statement.run();statement.reset();
 }
+uint64_t versionAt(sqlite3* db,const std::vector<std::string>& dates) {
+    std::string sql="SELECT COALESCE(MAX(generation),0) FROM query_versions WHERE scope IN (";
+    for(size_t i=0;i<(dates.empty()?size_t(1):dates.size());++i)sql+=i?",?":"?";
+    sql+=")";Statement q(db,sql.c_str());
+    if(dates.empty())q.text(1,"*");else for(size_t i=0;i<dates.size();++i)q.text(int(i+1),"d:"+dates[i]);
+    check(sqlite3_step(q.value),db);return static_cast<uint64_t>(sqlite3_column_int64(q.value,0));
+}
+Task historyRow(sqlite3_stmt* row) {
+    if(column(row,1)!="REGRESSION")throw std::runtime_error("invalid persisted task type");
+    Task task(static_cast<TaskId>(sqlite3_column_int64(row,0)),TaskType::REGRESSION,column(row,2),column(row,3));
+    task.setPriority(sqlite3_column_int(row,4));
+    task.restore(statusFrom(column(row,5)),column(row,8),sqlite3_column_int(row,9),
+        nlohmann::json::parse(column(row,6)),sqlite3_column_type(row,7)==SQLITE_NULL?nlohmann::json(nullptr):nlohmann::json::parse(column(row,7)),
+        static_cast<uint64_t>(sqlite3_column_int64(row,10)),column(row,11),sqlite3_column_int(row,12)!=0,
+        fromMillis(sqlite3_column_int64(row,13)),fromMillis(sqlite3_column_int64(row,14)),fromMillis(sqlite3_column_int64(row,15)));
+    return task;
+}
 } // namespace
 
 void StateStore::exec(const char* sql) const {
@@ -125,6 +142,11 @@ StateStore::StateStore(const std::string& path, int busy_timeout_ms) {
             exec("CREATE TABLE IF NOT EXISTS task_query_index (task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id), outcome TEXT NOT NULL, source TEXT NOT NULL, day TEXT NOT NULL, template TEXT NOT NULL, has_case INTEGER NOT NULL, classified INTEGER NOT NULL)");
             exec("CREATE INDEX IF NOT EXISTS query_day ON task_query_index(day,template,task_id)");
             exec("CREATE INDEX IF NOT EXISTS query_classified ON task_query_index(classified,has_case)");
+            exec("CREATE INDEX IF NOT EXISTS tasks_target_revision ON tasks(target,revision,task_id)");
+            exec("CREATE INDEX IF NOT EXISTS tasks_revision ON tasks(revision,task_id)");
+            // Additive metadata: no task schema changes and no async write-behind.
+            exec("CREATE TABLE IF NOT EXISTS query_versions (scope TEXT PRIMARY KEY,generation INTEGER NOT NULL)");
+            exec("INSERT OR IGNORE INTO query_versions VALUES('*',0)");
             exec("CREATE TABLE IF NOT EXISTS deleted_tasks (task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id))");
             exec("CREATE TABLE IF NOT EXISTS deleted_batches (batch_id TEXT PRIMARY KEY REFERENCES batches(batch_id))");
             if(schema_version<4){
@@ -142,7 +164,11 @@ StateStore::StateStore(const std::string& path, int busy_timeout_ms) {
             if (column(check_db.value, 0) != "ok")
                 throw std::runtime_error("SQLite integrity check failed");
         }
+        check(sqlite3_open_v2(path.c_str(),&history_db_,SQLITE_OPEN_READONLY,nullptr),history_db_);
+        check(sqlite3_busy_timeout(history_db_,busy_timeout_ms),history_db_);
+        check(sqlite3_exec(history_db_,"PRAGMA query_only=ON",nullptr,nullptr,nullptr),history_db_);
     } catch (...) {
+        if(history_db_)sqlite3_close(history_db_);history_db_=nullptr;
         if (db_) sqlite3_close(db_);
         db_ = nullptr;
         if (lock_fd_ >= 0) { ::close(lock_fd_); lock_fd_ = -1; }
@@ -151,6 +177,7 @@ StateStore::StateStore(const std::string& path, int busy_timeout_ms) {
 }
 
 StateStore::~StateStore() {
+    if(history_db_)sqlite3_close(history_db_);
     if (db_) sqlite3_close(db_);
     if (lock_fd_ >= 0) ::close(lock_fd_);
 }
@@ -215,6 +242,10 @@ size_t StateStore::deleteRecords(TaskId id,const std::string& batch_id) {
         const auto step=sqlite3_step(active.value);
         if(step==SQLITE_ROW)throw std::logic_error("active tasks cannot be deleted; cancel queued cases and wait for running cases to finish");
         check(step,db_);
+        std::set<std::string> days;
+        Statement affected(db_,("SELECT DISTINCT q.day FROM task_query_index q JOIN tasks t ON t.task_id=q.task_id WHERE t."+where).c_str());
+        if(id)affected.number(1,checkedId(id));else affected.text(1,batch_id);
+        for(;;){const auto step=sqlite3_step(affected.value);if(step==SQLITE_DONE)break;check(step,db_);days.insert(column(affected.value,0));}
         Statement mark(db_,("INSERT OR IGNORE INTO deleted_tasks SELECT task_id FROM tasks WHERE "+where).c_str());
         if(id)mark.number(1,checkedId(id));else mark.text(1,batch_id);mark.run();
         const auto count=static_cast<size_t>(sqlite3_changes(db_));
@@ -222,6 +253,7 @@ size_t StateStore::deleteRecords(TaskId id,const std::string& batch_id) {
             Statement batch(db_,"INSERT OR IGNORE INTO deleted_batches SELECT batch_id FROM batches WHERE batch_id=?");batch.text(1,batch_id);batch.run();
             Statement stop(db_,"UPDATE batches SET stop_requested=1 WHERE batch_id=?");stop.text(1,batch_id);stop.run();
         }
+        if(count)bumpHistory(days);
         exec("COMMIT");return count;
     }catch(...){exec("ROLLBACK");throw;}
 }
@@ -383,7 +415,12 @@ void StateStore::save(const std::vector<Task>& tasks,
             batch.text(1, *stopped_batch); batch.run(); batch.reset();
             stop.text(1, *stopped_batch); stop.run();
         }
+        std::set<std::string> affected_days;
+        Statement previous_day(db_,"SELECT day FROM task_query_index WHERE task_id=?");
         for (const auto& task : tasks) {
+            previous_day.number(1,checkedId(task.getId()));const auto old_step=sqlite3_step(previous_day.value);
+            if(old_step==SQLITE_ROW)affected_days.insert(column(previous_day.value,0));else check(old_step,db_);
+            previous_day.reset();affected_days.insert(taskContext(task,"date"));
             const auto batch_id = batchId(task);
             if (!batch_id.empty()) {
                 batch.text(1, batch_id); batch.run(); batch.reset();
@@ -444,6 +481,7 @@ void StateStore::save(const std::vector<Task>& tasks,
             decision.text(4, recovery->second);
             decision.run();
         }
+        if(!tasks.empty())bumpHistory(affected_days);
         exec("COMMIT");
     } catch (...) { exec("ROLLBACK"); throw; }
 }
@@ -453,6 +491,58 @@ nlohmann::json StateStore::loadWorkerControls() const {
     int step=sqlite3_step(query.value);
     if(step==SQLITE_DONE)return {{"machines",nlohmann::json::object()},{"workers",nlohmann::json::object()}};
     check(step,db_);return nlohmann::json::parse(column(query.value,0));
+}
+
+void StateStore::bumpHistory(const std::set<std::string>& dates) {
+    // Caller owns the writer mutex AND the surrounding task transaction.
+    exec("UPDATE query_versions SET generation=generation+1 WHERE scope='*'");
+    Statement update(db_,"INSERT OR REPLACE INTO query_versions SELECT ?,generation FROM query_versions WHERE scope='*'");
+    for(const auto& day:dates)if(!day.empty()){update.text(1,"d:"+day);update.run();update.reset();}
+}
+
+uint64_t StateStore::historyVersion(const std::vector<std::string>& dates) const {
+    const auto start=std::chrono::steady_clock::now();std::lock_guard<std::mutex> lock(history_mutex_);const auto wait=queryMicros(start);
+    try{const auto version=versionAt(history_db_,dates);version_metrics_.record(queryMicros(start),wait);return version;}
+    catch(...){version_metrics_.record(queryMicros(start),wait,0,true);throw;}
+}
+
+HistorySnapshot StateStore::historySnapshot(const std::string& batch,const std::vector<std::string>& dates,
+        const std::string& stage,const std::string& target,const std::vector<std::string>& revisions,
+        bool scheduled_only,size_t max_rows) const {
+    const auto start=std::chrono::steady_clock::now();std::unique_lock<std::mutex> lock(history_mutex_);
+    const auto wait=queryMicros(start);size_t count=0,estimated_bytes=0;bool transaction=false;
+    auto execute=[this](const char* sql){check(sqlite3_exec(history_db_,sql,nullptr,nullptr,nullptr),history_db_);};
+    try {
+        execute("BEGIN");transaction=true;HistorySnapshot result;result.generation=versionAt(history_db_,scheduled_only?dates:std::vector<std::string>{});
+        if(scheduled_only){
+            std::string sql="SELECT DISTINCT template FROM task_query_index WHERE classified=1 AND task_id NOT IN (SELECT task_id FROM deleted_tasks)";
+            if(!dates.empty()){sql+=" AND day IN (";for(size_t i=0;i<dates.size();++i)sql+=i?",?":"?";sql+=")";}
+            Statement names(history_db_,sql.c_str());for(size_t i=0;i<dates.size();++i)names.text(int(i+1),dates[i]);
+            for(;;){auto step=sqlite3_step(names.value);if(step==SQLITE_DONE)break;check(step,history_db_);result.templates.insert(column(names.value,0));}
+            Statement excluded(history_db_,"SELECT COUNT(*) FROM task_query_index WHERE classified=0 AND has_case=1 AND task_id NOT IN (SELECT task_id FROM deleted_tasks)");
+            check(sqlite3_step(excluded.value),history_db_);result.excluded=static_cast<uint64_t>(sqlite3_column_int64(excluded.value,0));
+        }
+        std::string sql="SELECT t.task_id,t.task_type,t.target,t.revision,t.priority,t.status,t.payload_json,t.execution_json,COALESCE(t.worker_id,''),t.retry_count,t.queue_sequence,COALESCE(t.run_id,''),t.recovery_required,t.created_at_ms,COALESCE(t.started_at_ms,0),COALESCE(t.finished_at_ms,0) FROM tasks t WHERE t.task_id NOT IN (SELECT task_id FROM deleted_tasks)";
+        std::vector<std::string> parameters;
+        if(!batch.empty()){sql+=" AND t.batch_id=?";parameters.push_back(batch);}
+        if(!target.empty()){sql+=" AND t.target=?";parameters.push_back(target);}
+        if(!revisions.empty()){sql+=" AND t.revision IN (";for(size_t i=0;i<revisions.size();++i){sql+=i?",?":"?";parameters.push_back(revisions[i]);}sql+=")";}
+        if(!dates.empty()||!stage.empty()||scheduled_only){
+            sql+=" AND t.task_id IN (SELECT task_id FROM task_query_index WHERE 1=1";
+            if(scheduled_only)sql+=" AND classified=1";
+            if(!dates.empty()){sql+=" AND day IN (";for(size_t i=0;i<dates.size();++i){sql+=i?",?":"?";parameters.push_back(dates[i]);}sql+=")";}
+            if(!stage.empty()){sql+=" AND template=?";parameters.push_back(stage);}sql+=")";
+        }
+        sql+=" ORDER BY t.task_id";Statement rows(history_db_,sql.c_str());
+        for(size_t i=0;i<parameters.size();++i)rows.text(int(i+1),parameters[i]);
+        for(;;){auto step=sqlite3_step(rows.value);if(step==SQLITE_DONE)break;check(step,history_db_);
+            if(count>=max_rows)throw std::invalid_argument("history query too broad; narrow dates, stage or target");
+            size_t raw=0;for(int column=0;column<16;++column)raw+=static_cast<size_t>(sqlite3_column_bytes(rows.value,column));
+            estimated_bytes+=raw*4+512;
+            if(estimated_bytes>128*1024*1024)throw std::invalid_argument("history snapshot exceeds memory budget; narrow dates, stage or target");
+            result.tasks.push_back(historyRow(rows.value));++count;}
+        execute("COMMIT");transaction=false;history_metrics_.record(queryMicros(start),wait,count);return result;
+    }catch(...){if(transaction)sqlite3_exec(history_db_,"ROLLBACK",nullptr,nullptr,nullptr);history_metrics_.record(queryMicros(start),wait,count,true);throw;}
 }
 void StateStore::saveWorkerControls(const nlohmann::json& controls) {
     const auto serialized=controls.dump();

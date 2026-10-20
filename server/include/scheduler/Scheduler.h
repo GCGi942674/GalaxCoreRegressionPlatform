@@ -6,6 +6,7 @@
 #include "task/TaskStatus.h"
 #include "worker/WorkerManager.h"
 #include "worker/Worker.h"
+#include "persistence/StateStore.h"
 #include <unordered_map>
 #include <vector>
 #include <optional>
@@ -81,6 +82,11 @@ public:
     // The tasks and generation are captured under the same lock.
     std::pair<uint64_t, std::vector<Task>> taskSnapshot() const;
     uint64_t taskGeneration() const;
+    HistorySnapshot historySnapshot(const std::string& batch="",const std::vector<std::string>& dates={},
+        const std::string& stage="",const std::string& target="",const std::vector<std::string>& revisions={},
+        bool scheduled_only=false,size_t max_rows=200000) const;
+    uint64_t historyVersion(const std::vector<std::string>& dates={}) const;
+    nlohmann::json historyStats() const;
     WorkerInventorySnapshot workerInventory() const;
     nlohmann::json statusCounts() const;
     void publishDailyPlan(const nlohmann::json& manifest);

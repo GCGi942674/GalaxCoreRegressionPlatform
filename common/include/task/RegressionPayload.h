@@ -57,7 +57,7 @@ inline bool validRegressionPayload(const nlohmann::json& p) {
         if (part.empty() || part == "." || part == "..") return false;
         for (unsigned char ch : part)
             if (!(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z') &&
-                !(ch >= '0' && ch <= '9') && ch != '_' && ch != '-' && ch != '.') return false;
+                !(ch >= '0' && ch <= '9') && ch != '_' && ch != '-' && ch != '.' && ch != '+') return false;
         if (end == std::string::npos) break;
         pos = end + 1;
     }

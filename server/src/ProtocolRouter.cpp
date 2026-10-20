@@ -83,6 +83,16 @@ nlohmann::json executionSummary(const std::string& message, GCRP::TaskStatus sta
         return nullptr;
     }
 }
+GCRP::DailyCacheOptions dailyCacheOptions() {
+    auto& c=GCRP::Config::instance();GCRP::DailyCacheOptions result;
+    result.enabled=c.getBool("cache.daily.enabled",true);
+    result.max_entries=static_cast<size_t>(std::max(1,std::min(128,c.getInt("cache.daily.max_entries",8))));
+    result.max_bytes=static_cast<size_t>(std::max(4096,std::min(1024*1024*1024,c.getInt("cache.daily.max_bytes",64*1024*1024))));
+    result.max_rows=static_cast<size_t>(std::max(100,std::min(200000,c.getInt("cache.daily.max_snapshot_rows",50000))));
+    result.ttl_seconds=std::max(1,std::min(60,c.getInt("cache.daily.ttl_seconds",5)));
+    result.historical_ttl_seconds=std::max(1,std::min(3600,c.getInt("cache.daily.historical_ttl_seconds",300)));
+    return result;
+}
 }
 
 namespace GCRP::Protocol {
@@ -100,7 +110,7 @@ ProtocolRouter::ProtocolRouter(
     , regression_service_(scheduler,
           Config::instance().getBool("cache.regression.enabled", false),
           static_cast<size_t>(std::max(1, Config::instance().getInt("cache.regression.max_entries", 1000))),
-          std::max(1, Config::instance().getInt("cache.regression.ttl_seconds", 5)))
+          std::max(1, Config::instance().getInt("cache.regression.ttl_seconds", 5)),dailyCacheOptions())
     , log_archive_(Config::instance().getString("server.log_archive_root", "./data/run-logs"))
 {
 }
@@ -376,8 +386,8 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
             if (!filter)
                 return buildResponse(request, ResponseCode::INVALID_REQUEST,
                                      "invalid regression query");
-            return buildResponse(request, ResponseCode::OK, "ok",
-                                 regression_service_.query(*filter));
+            try{return buildResponse(request, ResponseCode::OK, "ok",regression_service_.query(*filter));}
+            catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
         }
 
         case GCRP::Protocol::MessageType::QUERY_PROGRESS: {
@@ -385,8 +395,8 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
             if (!filter)
                 return buildResponse(request, ResponseCode::INVALID_REQUEST,
                                      "invalid progress query");
-            return buildResponse(request, ResponseCode::OK, "ok",
-                                 ProgressService(scheduler_).queryProgress(*filter));
+            try{return buildResponse(request, ResponseCode::OK, "ok",ProgressService(scheduler_).queryProgress(*filter));}
+            catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
         }
 
         case GCRP::Protocol::MessageType::QUERY_ROLLBACK: {
@@ -394,8 +404,8 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
             if (!filter)
                 return buildResponse(request, ResponseCode::INVALID_REQUEST,
                                      "invalid rollback query");
-            return buildResponse(request, ResponseCode::OK, "ok",
-                                 ProgressService(scheduler_).queryRollbacks(*filter));
+            try{return buildResponse(request, ResponseCode::OK, "ok",ProgressService(scheduler_).queryRollbacks(*filter));}
+            catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
         }
 
         case GCRP::Protocol::MessageType::QUERY_STATUS: {

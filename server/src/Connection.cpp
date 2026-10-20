@@ -14,6 +14,10 @@ using namespace GCRP;
 
 Connection::Connection(EventLoop *loop, int fd)
     : owner_loop_(loop), fd_(fd), state_(ConnState::Connected) {
+  static std::atomic<uint64_t> next_connection_id{0};connection_id_=++next_connection_id;
+  sockaddr_in address{};socklen_t length=sizeof(address);char ip[INET_ADDRSTRLEN]{};
+  if(::getpeername(fd,reinterpret_cast<sockaddr*>(&address),&length)==0&&address.sin_family==AF_INET&&
+     ::inet_ntop(AF_INET,&address.sin_addr,ip,sizeof(ip)))peer_=std::string(ip)+":"+std::to_string(ntohs(address.sin_port));
   this->refreshActivity();
   std::ostringstream oss;
   oss << "connection created, fd=" << this->fd_;
@@ -141,7 +145,7 @@ Connection::WriteResult Connection::handleWrite() {
   if (this->canBeClosed()) {
     std::ostringstream oss;
     oss << "write buffer drained, closing disconnecting connection, fd=" << this->fd_;
-    LOG_INFO(LogModule::NETWORK, oss.str());
+    LOG_DEBUG(LogModule::NETWORK, oss.str());
     this->setState(ConnState::Disconnected);
     write_res.close = true;
     return write_res;
@@ -195,6 +199,22 @@ void Connection::send(const std::string &data) {
   sendPacket(std::vector<char>(data.begin(), data.end()));
 }
 
+void Connection::setResponseQueuedCallback(std::function<void(bool)> cb) {on_response_queued_=std::move(cb);}
+bool Connection::sendResponsePacket(const std::vector<char>& packet,bool heartbeat) {
+  if(!sendPacket(packet))return false;
+  if(on_response_queued_)on_response_queued_(heartbeat);
+  return true;
+}
+void Connection::setLogIdentity(const std::string& role,const std::string& worker) {
+  std::lock_guard<std::mutex> lock(identity_mutex_);log_role_=role;log_worker_=worker;
+}
+std::string Connection::logContext() const {
+  std::lock_guard<std::mutex> lock(identity_mutex_);
+  return "connection_id="+std::to_string(connection_id_)+" fd="+std::to_string(fd_)+" peer="+peer_+" role="+log_role_+
+      (log_worker_.empty()?std::string():" worker_id="+log_worker_);
+}
+bool Connection::isWorkerConnection() const {std::lock_guard<std::mutex> lock(identity_mutex_);return log_role_=="WORKER";}
+
 bool Connection::wantWrite() const {
   return this->outputBuffer_.readableBytes() > 0;
 }
@@ -206,7 +226,7 @@ void Connection::setState(Connection::ConnState st) {
     std::ostringstream oss;
     oss << "connection state change, fd=" << this->fd_ << ", from=" << static_cast<int>(this->state_.load())
          << ", to=" << static_cast<int>(st);
-    LOG_INFO(LogModule::NETWORK, oss.str());
+    LOG_DEBUG(LogModule::NETWORK, oss.str());
   }
   this->state_.store(st);
 }
@@ -215,7 +235,7 @@ void Connection::shutdown() {
   if (this->state_ == ConnState::Connected) {
     std::ostringstream oss;
     oss << "connection enter disconnecting, fd=" << this->fd_;
-    LOG_INFO(LogModule::NETWORK, oss.str());
+    LOG_DEBUG(LogModule::NETWORK, oss.str());
     this->state_.store(ConnState::Disconnecting);
   }
 }

@@ -1,5 +1,6 @@
 #include "ConsoleSupport.h"
 #include "RerunTask.h"
+#include "RerunSelectionDialog.h"
 #include "ArchiveDownload.h"
 
 void MainWindow::showTasks() {
@@ -170,22 +171,47 @@ void MainWindow::rerunFailures(const Json& rows) {
     if(ids->empty()){note(QStringLiteral("当前筛选中没有失败或超时案例。"));return;}
     if(demo_){note(QStringLiteral("演示：将创建独立人工复测批次，不修改原每日回归。"));return;}
     if(!operations_.contains("submit_task")||!operations_.contains("query_task"))return;
-    if(QMessageBox::question(this,QStringLiteral("确认复测"),QStringLiteral("复测当前筛选中的 %1 个失败 / 超时案例。\n继承各自原始 ZIP 版本、flow_config 和超时。\n创建新的人工批次，不覆盖历史，也不参与每日回归比较。\n尚未提交前会先读取完整配置，读取失败则整批不提交。").arg(ids->size()))!=QMessageBox::Yes)return;
+    if(!operations_.contains("query_catalog")){note(QStringLiteral("Server 不支持 ZIP 目录查询，请更新 Server 后复测。"),true);return;}
     submitting_=true;submit_->setEnabled(false);pendingSubmissions_=Json::array();submitIndex_=0;
     manualBatch_="rerun-"+QUuid::createUuid().toString().mid(1,36);
     loadRerun(ids,0);
 }
 void MainWindow::loadRerun(std::shared_ptr<Json> ids,size_t index) {
-    if(index==ids->size()){submitNext();return;}
+    if(index==ids->size()){confirmRerun();return;}
     rpc_.request("query_task",{{"task_id",(*ids)[index]}},[this,ids,index](RpcReply reply){
         try{
             if(!reply.ok)throw std::runtime_error(reply.error.toStdString());
-            pendingSubmissions_.push_back(rerunTask(reply.result,manualBatch_.toStdString(),index));
+            (void)rerunTask(reply.result,manualBatch_.toStdString(),index);
+            pendingSubmissions_.push_back(reply.result);
             loadRerun(ids,index+1);
         }catch(const std::exception& e){
             submitting_=false;submit_->setEnabled(true);pendingSubmissions_=Json::array();
             QMessageBox::warning(this,QStringLiteral("复测准备失败 · 未提交任何案例"),QString::fromUtf8(e.what()));
         }
+    });
+}
+
+void MainWindow::confirmRerun() {
+    // Refresh the Server-owned ZIP list; never trust a stale local catalog.
+    rpc_.request("query_catalog",{{"refresh",true}},[this](RpcReply reply){
+        auto release=[this]{submitting_=false;submit_->setEnabled(true);pendingSubmissions_=Json::array();};
+        try{
+            if(!reply.ok)throw std::runtime_error(reply.error.toStdString());
+            if(reply.result.at("sources").at("server.artifact_root")!="READY")throw std::runtime_error("Server ZIP directory is not readable");
+            QStringList available,originals;
+            for(const auto& value:reply.result.at("revisions")){
+                const auto revision=value.get<std::string>();
+                if(revision.empty()||revision.size()>32||revision.find_first_not_of("0123456789")!=std::string::npos)throw std::runtime_error("invalid ZIP revision list");
+                available<<QString::fromStdString(revision);
+            }
+            for(const auto& source:pendingSubmissions_){auto revision=text(source,"revision");if(!originals.contains(revision))originals<<revision;}
+            RerunSelectionDialog dialog(int(pendingSubmissions_.size()),originals,available,this);
+            if(dialog.exec()!=QDialog::Accepted){release();return;}
+            const auto revision=dialog.selectedRevision().toStdString();Json requests=Json::array();
+            for(size_t i=0;i<pendingSubmissions_.size();++i)requests.push_back(rerunTask(pendingSubmissions_[i],manualBatch_.toStdString(),i,revision));
+            if(originals.size()>1)for(auto& request:requests)request["payload"]["context"]["name"]=revision.empty()?"人工复测 · 保留各自原版本":"人工复测 · 多版本 -> r"+revision;
+            pendingSubmissions_=std::move(requests);submitNext();
+        }catch(const std::exception& e){release();QMessageBox::warning(this,QStringLiteral("复测准备失败 · 未提交任何案例"),QString::fromUtf8(e.what()));}
     });
 }
 

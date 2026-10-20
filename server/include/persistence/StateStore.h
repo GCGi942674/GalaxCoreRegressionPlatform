@@ -9,6 +9,8 @@
 #include <vector>
 #include <mutex>
 #include <functional>
+#include <set>
+#include "persistence/QueryMetrics.h"
 
 struct sqlite3;
 
@@ -17,6 +19,11 @@ namespace GCRP {
 struct PersistedTask {
     Task task;
     uint64_t queue_sequence;
+};
+struct HistorySnapshot {
+    uint64_t generation{0},excluded{0};
+    std::vector<Task> tasks;
+    std::set<std::string> templates;
 };
 
 class StateStore {
@@ -30,6 +37,13 @@ public:
                                          const std::string& batch_id = "", bool include_deleted = false) const;
     std::pair<TaskId,uint64_t> highWaterMarks() const;
     nlohmann::json statusCounts() const;
+    // A separate read-only connection and a WAL read transaction. Never takes
+    // the Scheduler lock or the writer connection mutex.
+    HistorySnapshot historySnapshot(const std::string& batch="",const std::vector<std::string>& dates={},
+        const std::string& stage="",const std::string& target="",const std::vector<std::string>& revisions={},
+        bool scheduled_only=false,size_t max_rows=200000) const;
+    uint64_t historyVersion(const std::vector<std::string>& dates={}) const;
+    nlohmann::json historyStats() const {auto result=history_metrics_.json();result["version_checks"]=version_metrics_.json();return result;}
     void publishDailyPlan(const nlohmann::json& manifest);
     nlohmann::json dailyPlan(const std::string& day) const;
     bool hasBatch(const std::string& id) const;
@@ -61,6 +75,11 @@ public:
 private:
     mutable std::mutex mutex_;
     sqlite3* db_{nullptr};
+    sqlite3* history_db_{nullptr};
+    mutable std::mutex history_mutex_;
+    mutable QueryMetrics history_metrics_;
+    mutable QueryMetrics version_metrics_;
+    void bumpHistory(const std::set<std::string>& dates);
     int lock_fd_{-1};
     void exec(const char* sql) const;
 };

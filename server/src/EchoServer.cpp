@@ -2,6 +2,7 @@
 #include "Logging.h"
 #include "Scope_guard.h"
 #include "Utils.h" // 来自 common
+#include "config/Config.h"
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
@@ -17,6 +18,9 @@ EchoServer::EchoServer(int port, EchoHandler &handler, int signal_fd,
     : handler_(handler), loop_(), acceptor_(&loop_, port, std::move(bind_ip)),
       io_loop_pool_(std::make_unique<EventLoopThreadPool>(io_thread_num)),
       io_thread_num_(io_thread_num), pool_(worker_thread_num), signal_fd(signal_fd) {
+  const int interval=Config::instance().getInt("log.metrics_interval_seconds",60);
+  if(interval<5||interval>3600)throw std::runtime_error("log.metrics_interval_seconds must be 5..3600");
+  metrics_interval_ms_=static_cast<uint64_t>(interval)*1000;
   std::ostringstream oss;
   oss << "EchoServer created, port=" << port;
   LOG_INFO(LogModule::SERVER, oss.str());
@@ -101,8 +105,6 @@ void EchoServer::onMessage(const std::shared_ptr<Connection> &conn,
     auto resp = this->handler_.onMessage(msg);
     auto packet = MessageCodec::encode(resp);
 
-    this->metrics_.onResponseSent(is_heartbeat);
-
     uint64_t end_us = getSteadyClockUs();
     this->metrics_.onWorkerTaskCompleted(end_us - begin_us);
 
@@ -114,7 +116,7 @@ void EchoServer::onMessage(const std::shared_ptr<Connection> &conn,
 
     EventLoop *onwer = conn->ownerLoop();
 
-    onwer->queueInLoop([this, weak_conn, packet]() -> void {
+    onwer->queueInLoop([this, weak_conn, packet, is_heartbeat]() -> void {
       auto conn = weak_conn.lock();
       if (!conn) {
         LOG_WARN(LogModule::SERVER, "Connection expired before sending response");
@@ -150,7 +152,7 @@ void EchoServer::onMessage(const std::shared_ptr<Connection> &conn,
         return;
       }
 
-      conn->sendPacket(packet);
+      conn->sendResponsePacket(packet,is_heartbeat);
       this->updateConnectionEvent(conn, conn->wantWrite());
       std::ostringstream oss;
       oss << "response queued back to loop, fd=" << fd << ", want_write=" << conn->wantWrite();
@@ -204,7 +206,11 @@ bool EchoServer::run() {
     return false;
   }
 
+  last_metrics_ms_=getSteadyClockMs();
+  last_metrics_snapshot_=metrics_.snapshot();has_last_snapshot_=true;
   this->idle_check_timer_ = this->loop_.runEvery(5000, [this]() {
+    const auto metrics_now=getSteadyClockMs();
+    if(metrics_now-last_metrics_ms_>=metrics_interval_ms_){
     auto snap = this->metrics_.snapshot();
 
     double qps = 0.0;
@@ -220,7 +226,7 @@ bool EchoServer::run() {
     uint64_t delta_accept = 0;
     uint64_t delta_close = 0;
 
-    constexpr double interval_sec = kMetricIntervalSec;
+    const double interval_sec=static_cast<double>(metrics_now-last_metrics_ms_)/1000.0;
 
     if (this->has_last_snapshot_) {
       delta_msg = snap.messages_received -
@@ -247,23 +253,22 @@ bool EchoServer::run() {
     }
 
     std::ostringstream oss;
-    oss << "[METRIC_TOTAL] ... conn_cur=" << snap.current_connections
+    oss << "[METRICS] window_s=" << interval_sec << " conn_cur=" << snap.current_connections
        << " conn_total=" << snap.total_connections_accepted
        << " conn_closed=" << snap.total_connections_closed << " msg_recv="
-       << snap.messages_received << " resp_sent=" << snap.responses_sent
+       << snap.messages_received << " resp_queued=" << snap.responses_sent
        << " bytes_in=" << snap.bytes_received << " bytes_out="
-       << snap.bytes_sent << " task_done=" << snap.worker_tasks_completed
-       << " latency_max_us=" << snap.business_latency_us_max;
+       << snap.bytes_sent << " accept=" << delta_accept << " close=" << delta_close
+       << " recv_msg_per_s=" << qps << " in_Bps=" << in_bytes_per_sec << " out_Bps="
+       << out_bytes_per_sec;
+    // Echo job counters do not describe scheduler testcase completion.
+    if(!protocol_message_)oss<<" echo_jobs_done="<<snap.worker_tasks_completed<<" echo_avg_us="<<avg_latency_us;
     LOG_INFO(LogModule::SERVER, oss.str());
-
-    std::ostringstream oss2;
-    oss2 << "[METRIC_WIN] ... accept=" << delta_accept << " close=" << delta_close
-         << " qps=" << qps << " in_Bps=" << in_bytes_per_sec << " out_Bps="
-         << out_bytes_per_sec << " avg_us=" << avg_latency_us;
-    LOG_INFO(LogModule::SERVER, oss2.str());
 
     this->last_metrics_snapshot_ = snap;
     this->has_last_snapshot_ = true;
+    last_metrics_ms_=metrics_now;
+    }
 
     uint64_t now = getSteadyClockMs();
 
@@ -283,9 +288,6 @@ bool EchoServer::run() {
       });
     }
 
-    std::ostringstream oss3;
-    oss3 << "timer heartbeat, current connections=" << this->metrics_.snapshot().current_connections;
-    LOG_INFO(LogModule::SERVER, oss3.str());
   });
 
   this->loop_.loop();
@@ -358,7 +360,7 @@ void EchoServer::handleClientEvent(const std::shared_ptr<Connection> &conn,
     if (iter == this->connections_.end()) {
       std::ostringstream oss;
       oss << "client event but connection not found, fd=" << client_fd;
-      LOG_WARN(LogModule::NETWORK, oss.str());
+      LOG_DEBUG(LogModule::NETWORK, oss.str());
       return;
     }
   }
@@ -366,7 +368,7 @@ void EchoServer::handleClientEvent(const std::shared_ptr<Connection> &conn,
   if (conn->isDisconnected()) {
     std::ostringstream oss;
     oss << "connection already disconnected before handling event, fd=" << client_fd;
-    LOG_INFO(LogModule::NETWORK, oss.str());
+    LOG_DEBUG(LogModule::NETWORK, oss.str());
     this->removeConnection(conn, ServerMetrics::CloseReason::PeerClosed);
     return;
   }
@@ -374,7 +376,7 @@ void EchoServer::handleClientEvent(const std::shared_ptr<Connection> &conn,
   if (events & (EPOLLERR | EPOLLHUP)) {
     std::ostringstream oss;
     oss << "epoll error/hup, remove connection, fd=" << client_fd << ", events=" << events;
-    LOG_WARN(LogModule::NETWORK, oss.str());
+    LOG_DEBUG(LogModule::NETWORK, oss.str());
     this->removeConnection(conn, ServerMetrics::CloseReason::EpollError);
     return;
   }
@@ -400,9 +402,6 @@ void EchoServer::handleClientEvent(const std::shared_ptr<Connection> &conn,
 
     if (rr.peer_close && conn->canBeClosed()) {
       this->removeConnection(conn, ServerMetrics::CloseReason::PeerClosed);
-      std::ostringstream oss;
-      oss << "peer closed, remove connection, fd=" << client_fd;
-      LOG_INFO(LogModule::NETWORK, oss.str());
       return;
     }
 
@@ -410,7 +409,7 @@ void EchoServer::handleClientEvent(const std::shared_ptr<Connection> &conn,
       this->removeConnection(conn, ServerMetrics::CloseReason::ReadError);
       std::ostringstream oss;
       oss << "handleRead failed, remove connection, fd=" << client_fd;
-      LOG_INFO(LogModule::NETWORK, oss.str());
+      LOG_DEBUG(LogModule::NETWORK, oss.str());
       return;
     }
 
@@ -418,7 +417,7 @@ void EchoServer::handleClientEvent(const std::shared_ptr<Connection> &conn,
       this->removeConnection(conn, ServerMetrics::CloseReason::ReadError);
       std::ostringstream oss;
       oss << "handleRead failed, remove connection, fd=" << client_fd;
-      LOG_INFO(LogModule::NETWORK, oss.str());
+      LOG_DEBUG(LogModule::NETWORK, oss.str());
       return;
     }
   }
@@ -429,7 +428,7 @@ void EchoServer::handleClientEvent(const std::shared_ptr<Connection> &conn,
     if (!wr.ok) {
       std::ostringstream oss;
       oss << "handleWrite failed, remove connection, fd=" << client_fd;
-      LOG_INFO(LogModule::NETWORK, oss.str());
+      LOG_DEBUG(LogModule::NETWORK, oss.str());
       this->removeConnection(conn, ServerMetrics::CloseReason::WriteError);
       return;
     }
@@ -472,6 +471,7 @@ void EchoServer::handleNewConnection(int client_fd) {
     }
 
     this->metrics_.onConnectionAccepted();
+    conn->setResponseQueuedCallback([this](bool heartbeat){metrics_.onResponseSent(heartbeat);});
 
     conn->setWriteReadyCallback([this](const std::shared_ptr<Connection>& current) {
       if (current->isDisconnected()) {
@@ -491,7 +491,7 @@ void EchoServer::handleNewConnection(int client_fd) {
                      this->handleClientEvent(conn, events);
                    });
     std::ostringstream oss;
-    oss << "new connection registered, fd=" << client_fd << ", total_connections="
+    oss << "new connection registered, " << conn->logContext() << ", current_connections="
         << this->metrics_.snapshot().current_connections;
     LOG_DEBUG(LogModule::SERVER, oss.str());
   });
@@ -515,14 +515,14 @@ void EchoServer::removeConnection(const std::shared_ptr<Connection> &conn,
       if (iter == this->connections_.end()) {
         std::ostringstream oss;
         oss << "removeConnection: fd not found, fd=" << client_fd;
-        LOG_WARN(LogModule::SERVER, oss.str());
+        LOG_DEBUG(LogModule::SERVER, oss.str());
         return;
       }
 
       if (iter->second != conn) {
         std::ostringstream oss;
         oss << "removeConnection: fd reused, fd=" << client_fd;
-        LOG_WARN(LogModule::SERVER, oss.str());
+        LOG_DEBUG(LogModule::SERVER, oss.str());
         return;
       }
 
@@ -530,13 +530,24 @@ void EchoServer::removeConnection(const std::shared_ptr<Connection> &conn,
     }
     conn->setState(Connection::ConnState::Disconnected);
     conn->ownerLoop()->removeFd(client_fd);
+    this->metrics_.onConnectionClosed(reason);
     if (connection_closed_) connection_closed_(conn);
     std::ostringstream oss;
-    oss << "connection removed, fd=" << client_fd << ", total_connections="
+    const char* why="unknown";
+    switch(reason){
+      case ServerMetrics::CloseReason::PeerClosed:why="peer_closed";break;
+      case ServerMetrics::CloseReason::IdleTimeout:why="idle_timeout";break;
+      case ServerMetrics::CloseReason::EpollError:why="epoll_error_or_hup";break;
+      case ServerMetrics::CloseReason::ReadError:why="read_or_protocol_error";break;
+      case ServerMetrics::CloseReason::WriteError:why="write_error";break;
+      case ServerMetrics::CloseReason::ForceShutdown:why="server_shutdown";break;
+    }
+    oss << "connection closed, " << conn->logContext() << " reason=" << why << " current_connections="
         << this->metrics_.snapshot().current_connections;
-    LOG_INFO(LogModule::SERVER, oss.str());
-
-    this->metrics_.onConnectionClosed(reason);
+    if(reason==ServerMetrics::CloseReason::ReadError||reason==ServerMetrics::CloseReason::WriteError||
+       reason==ServerMetrics::CloseReason::EpollError)LOG_WARN(LogModule::NETWORK,oss.str());
+    else if(conn->isWorkerConnection())LOG_INFO(LogModule::WORKER,oss.str());
+    else LOG_DEBUG(LogModule::NETWORK,oss.str());
     this->tryFinishShutdown();
   });
 }

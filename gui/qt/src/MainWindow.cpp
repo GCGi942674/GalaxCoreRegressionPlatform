@@ -219,6 +219,22 @@ void MainWindow::applyCatalog() {
                 if(r==protectedVersion)revision_->setItemData(revision_->count()-1,QStringLiteral("每日回归受保护版本"),Qt::ToolTipRole);
         }
         for(auto it=catalog_["templates"].begin();it!=catalog_["templates"].end();++it)flow_->addItem(QString::fromStdString(it.key()));
+        const auto previousStage=regressionStage_->currentData().toString();
+        bool stageRemoved=false;
+        {
+            QSignalBlocker stageSignals(regressionStage_);
+            regressionStage_->clear();regressionStage_->addItem(QStringLiteral("全部阶段"),"");
+            for(auto it=catalog_["templates"].begin();it!=catalog_["templates"].end();++it){
+                const auto name=QString::fromStdString(it.key());regressionStage_->addItem(name,name);
+            }
+            const auto index=regressionStage_->findData(previousStage);
+            stageRemoved=!previousStage.isEmpty()&&index<0;
+            regressionStage_->setCurrentIndex(qMax(0,index));
+        }
+        if(stageRemoved){
+            scheduleDailyQuery();
+            note(QStringLiteral("原回归阶段模板已移除，已切换为全部阶段，请重新选择。"));
+        }
         if(revision_->findText(previousRevision)>=0)revision_->setCurrentText(previousRevision);
         if(flow_->findText(previousFlow)>=0)flow_->setCurrentText(previousFlow);
         resetFlowOptions();

@@ -164,7 +164,7 @@ void EventLoop::removeFd(int fd) {
     {
       std::ostringstream oss;
       oss << "fd removed from epoll, fd=" << fd;
-      LOG_INFO(LogModule::NETWORK, oss.str());
+      LOG_DEBUG(LogModule::NETWORK, oss.str());
     }
   }
   this->callbacks_.erase(fd);

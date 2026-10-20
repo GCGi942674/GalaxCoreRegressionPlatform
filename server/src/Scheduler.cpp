@@ -764,6 +764,35 @@ uint64_t Scheduler::visitTasks(const std::function<void(const Task&)>& visitor,c
     return task_generation_;
 }
 
+HistorySnapshot Scheduler::historySnapshot(const std::string& batch,const std::vector<std::string>& dates,
+        const std::string& stage,const std::string& target,const std::vector<std::string>& revisions,
+        bool scheduled_only,size_t max_rows) const {
+    StateStore* store;
+    {std::lock_guard<std::mutex> lock(mutex_);store=store_;}
+    if(store)return store->historySnapshot(batch,dates,stage,target,revisions,scheduled_only,max_rows);
+    std::lock_guard<std::mutex> lock(mutex_);HistorySnapshot result;result.generation=task_generation_;
+    for(const auto& row:tasks_){const auto& task=row.second;const auto day=taskContext(task,"date"),name=taskContext(task,"template");
+        const auto& payload=task.getPayload();
+        if(payload.is_object()&&payload.contains("case")&&payload["case"].is_string()&&!payload["case"].get_ref<const std::string&>().empty()&&
+           (taskContext(task,"source")!="scheduled"||name.empty()||!validQueryDate(day)))++result.excluded;
+        if(!dates.empty()&&std::find(dates.begin(),dates.end(),day)==dates.end())continue;
+        if(scheduled_only){if(taskContext(task,"source")!="scheduled"||name.empty())continue;result.templates.insert(name);}
+        if((!batch.empty()&&taskContext(task,"batch_id")!=batch)||(!stage.empty()&&name!=stage)||(!target.empty()&&task.getTarget()!=target)||
+           (!revisions.empty()&&std::find(revisions.begin(),revisions.end(),task.getRevision())==revisions.end()))continue;
+        if(result.tasks.size()>=max_rows)throw std::invalid_argument("history query too broad; narrow filters");result.tasks.push_back(task);
+    }
+    return result;
+}
+uint64_t Scheduler::historyVersion(const std::vector<std::string>& dates) const {
+    StateStore* store;uint64_t generation;
+    {std::lock_guard<std::mutex> lock(mutex_);store=store_;generation=task_generation_;}
+    return store?store->historyVersion(dates):generation;
+}
+nlohmann::json Scheduler::historyStats() const {
+    StateStore* store;{std::lock_guard<std::mutex> lock(mutex_);store=store_;}
+    return store?store->historyStats():nlohmann::json{{"storage","in_memory"}};
+}
+
 std::optional<std::pair<uint64_t,std::vector<TaskGroupSnapshot>>> Scheduler::taskGroups(
         const std::string& target,const std::string& revision,const std::string& batch_id) const {
     std::lock_guard<std::mutex> lock(mutex_);

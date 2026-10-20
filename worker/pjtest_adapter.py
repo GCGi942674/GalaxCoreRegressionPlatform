@@ -193,7 +193,7 @@ class PJtestAdapter:
             raise AdapterError("invalid regression payload")
         relative, flow, revision = payload["case"], payload["flow"], task.get("revision")
         if (not isinstance(relative, str) or len(relative) > 512 or
-                not re.fullmatch(r"[A-Za-z0-9_.\-/]+", relative) or
+                not re.fullmatch(r"[A-Za-z0-9_.+\-/]+", relative) or
                 any(x in ("", ".", "..") for x in relative.split("/")) or
                 not relative.endswith("/run.tcl") or
                 not isinstance(flow, str) or not _SAFE_FLOW.fullmatch(flow) or

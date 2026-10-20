@@ -76,10 +76,11 @@ void WorkerSession::handleRequest(const ProtocolMessage& request) {
             return;
         }
         worker_id_ = dto.worker_id;
+        conn->setLogIdentity("WORKER",dto.worker_id);
         worker_manager_.setControlSupported(dto.worker_id,dto.control_v1);
         recovery_protocol_ = recovering;
         binding_handle_ = *handle;
-        LOG_INFO(LogModule::WORKER, "worker registered: " + *worker_id_);
+        LOG_DEBUG(LogModule::WORKER, "worker connection bound, " + conn->logContext());
         ProtocolMessage response;response.request_id=request.request_id;response.type=MessageType::RESPONSE;
         response.data=DTO::toJson(DTO::Response{0,"ok",{{"archive_lifecycle_v1",true}}});
         sendToConnection(encodeResponse(response));
@@ -113,6 +114,7 @@ void WorkerSession::handleClose() {
         // Old A closing after replacement B must affect neither B nor its liveness.
         registry_.unbind(id, *binding_handle_, [this, &id]() {
             worker_manager_.markOffline(id);
+            LOG_INFO(LogModule::WORKER,"worker disconnected; marked offline, worker_id="+id);
         });
     }
     binding_handle_.reset();
@@ -144,8 +146,8 @@ std::vector<char> WorkerSession::encodeResponse(const ProtocolMessage& response)
 
 void WorkerSession::sendToConnection(const std::vector<char>& packet) {
     auto conn = getConnection();
-    if (conn && !packet.empty() && !conn->sendPacket(packet)) {
-        LOG_WARN(LogModule::NETWORK, "response queue rejected");
+    if (conn && !packet.empty() && !conn->sendResponsePacket(packet)) {
+        LOG_WARN(LogModule::NETWORK, "worker response queue rejected, "+conn->logContext());
     }
 }
 

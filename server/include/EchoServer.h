@@ -66,7 +66,8 @@ private:
   ServerMetricsSnapshot last_metrics_snapshot_;
   bool has_last_snapshot_{false};
 
-  static constexpr double kMetricIntervalSec = 5.0;
+  uint64_t metrics_interval_ms_{60000};
+  uint64_t last_metrics_ms_{0};
 };
 
 #endif // ECHO_SERVER_H

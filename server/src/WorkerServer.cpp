@@ -15,7 +15,10 @@ struct PendingLogReply {
 };
 void sendLogResponse(const std::shared_ptr<Connection>& conn,const ProtocolMessage& response){
     std::string encoded;ProtocolError error;
-    if(ProtocolCodec::encode(response,encoded,error))conn->sendPacket(MessageCodec::encode(encoded));
+    if(!ProtocolCodec::encode(response,encoded,error))
+        LOG_ERROR(GCRP::LogModule::NETWORK,"async response encoding failed, "+conn->logContext());
+    else if(!conn->sendResponsePacket(MessageCodec::encode(encoded)))
+        LOG_WARN(GCRP::LogModule::NETWORK,"async response queue rejected, "+conn->logContext());
 }
 ProtocolMessage logFailure(uint64_t id,const char* message){
     ProtocolMessage response;response.type=MessageType::RESPONSE;response.request_id=id;
@@ -84,7 +87,15 @@ WorkerServer::WorkerServer(bool persistent)
                 if(log_jobs_.empty()&&log_stopping_)return;job=std::move(log_jobs_.front());log_jobs_.pop_front();
             }try{job();}catch(...){/* The requester times out and retries; keep the I/O worker alive. */}}
         });
+        for(int i=0;i<2;++i)query_threads_.emplace_back([this]{
+            for(;;){std::function<void()> job;{
+                std::unique_lock<std::mutex> lock(query_mutex_);query_cv_.wait(lock,[this]{return query_stopping_||!query_jobs_.empty();});
+                if(query_jobs_.empty()&&query_stopping_)return;job=std::move(query_jobs_.front());query_jobs_.pop_front();
+            }try{job();}catch(...){/* A failed read cannot kill the query worker. */}}
+        });
     }catch(...){
+        {std::lock_guard<std::mutex> lock(query_mutex_);query_stopping_=true;}query_cv_.notify_all();
+        for(auto& thread:query_threads_)if(thread.joinable())thread.join();
         {std::lock_guard<std::mutex> lock(log_mutex_);log_stopping_=true;}log_cv_.notify_all();
         for(auto& thread:log_threads_)if(thread.joinable())thread.join();
         {std::lock_guard<std::mutex> lock(liveness_mutex_);stopping_=true;}liveness_cv_.notify_all();if(liveness_thread_.joinable())liveness_thread_.join();throw;
@@ -98,6 +109,8 @@ WorkerServer::~WorkerServer() {
     }
     liveness_cv_.notify_all();
     if (liveness_thread_.joinable()) liveness_thread_.join();
+    {std::lock_guard<std::mutex> lock(query_mutex_);query_stopping_=true;}query_cv_.notify_all();
+    for(auto& thread:query_threads_)if(thread.joinable())thread.join();
     {std::lock_guard<std::mutex> lock(log_mutex_);log_stopping_=true;}log_cv_.notify_all();
     for(auto& thread:log_threads_)if(thread.joinable())thread.join();
 }
@@ -112,10 +125,19 @@ void WorkerServer::attach(EchoServer& transport) {
         },
         [this](const std::shared_ptr<Connection>& conn, const std::string& message) {
             ProtocolMessage request;ProtocolError error;
-            if(ProtocolCodec::decode(message,request,error)&&
-                (request.type==MessageType::LOG_APPEND||request.type==MessageType::LOG_STATE||request.type==MessageType::QUERY_LOGS||request.type==MessageType::READ_LOG||request.type==MessageType::QUERY_DAILY_PLAN)){
+            const bool decoded=ProtocolCodec::decode(message,request,error);
+            const bool history=decoded&&(request.type==MessageType::QUERY_REGRESSION||request.type==MessageType::QUERY_PROGRESS||request.type==MessageType::QUERY_ROLLBACK);
+            if(decoded&&(history||request.type==MessageType::LOG_APPEND||request.type==MessageType::LOG_STATE||request.type==MessageType::QUERY_LOGS||request.type==MessageType::READ_LOG||request.type==MessageType::QUERY_DAILY_PLAN)){
                 bool permitted=false;{std::lock_guard<std::mutex> lock(session_mutex_);auto it=sessions_.find(conn.get());if(it!=sessions_.end())permitted=it->second->authorizeLog(request);}
                 if(permitted){
+                    if(history){
+                        bool queued=false;{std::lock_guard<std::mutex> lock(query_mutex_);
+                            if(!query_stopping_&&query_jobs_.size()<32){auto lease=std::make_shared<PendingLogReply>(conn);
+                                query_jobs_.push_back([this,conn,request,lease]{try{sendLogResponse(conn,router_ptr_->handle(request));}
+                                    catch(...){sendLogResponse(conn,logFailure(request.request_id,"history query failed; retry later"));}});queued=true;}
+                        }
+                        if(queued)query_cv_.notify_one();else sendLogResponse(conn,logFailure(request.request_id,"history query queue full; retry later"));return;
+                    }
                     bool queued=false;{std::lock_guard<std::mutex> lock(log_mutex_);
                         if(!log_stopping_&&log_jobs_.size()<64){auto lease=std::make_shared<PendingLogReply>(conn);log_jobs_.push_back([this,conn,request,lease]{try{sendLogResponse(conn,router_ptr_->handle(request));}catch(...){sendLogResponse(conn,logFailure(request.request_id,"log I/O failed; retry later"));}});queued=true;}
                     }
