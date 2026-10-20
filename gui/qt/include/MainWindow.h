@@ -121,6 +121,7 @@ private:
     void loadRerun(std::shared_ptr<Json> ids,size_t index);
     void confirmRerun();
     void showDailyPlan();
+    void openAutomation();
     void openLogs(const Json& task);
     void queryDaily(bool next=false);
     void scheduleDailyQuery();

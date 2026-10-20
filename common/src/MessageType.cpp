@@ -20,6 +20,8 @@ std::string toString(MessageType type) {
         case MessageType::QUERY_BATCH:    return "query_batch";
         case MessageType::PUBLISH_DAILY_PLAN: return "publish_daily_plan";
         case MessageType::QUERY_DAILY_PLAN: return "query_daily_plan";
+        case MessageType::QUERY_AUTOMATION: return "query_automation";
+        case MessageType::UPDATE_AUTOMATION: return "update_automation";
         case MessageType::CANCEL_BATCH:   return "cancel_batch";
         case MessageType::QUERY_REGRESSION: return "query_regression";
         case MessageType::QUERY_PROGRESS: return "query_progress";
@@ -57,6 +59,8 @@ MessageType messageTypeFromString(const std::string& value) {
         {"query_batch", MessageType::QUERY_BATCH},
         {"publish_daily_plan", MessageType::PUBLISH_DAILY_PLAN},
         {"query_daily_plan", MessageType::QUERY_DAILY_PLAN},
+        {"query_automation", MessageType::QUERY_AUTOMATION},
+        {"update_automation", MessageType::UPDATE_AUTOMATION},
         {"cancel_batch", MessageType::CANCEL_BATCH},
         {"query_regression", MessageType::QUERY_REGRESSION},
         {"query_progress", MessageType::QUERY_PROGRESS},

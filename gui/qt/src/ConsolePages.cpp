@@ -50,7 +50,10 @@ QWidget* MainWindow::tasksPage() {
     auto widget=page(QStringLiteral("任务管理"),QStringLiteral("以批次查看任务进度，完成率与通过率分别统计。"));
     auto layout=qobject_cast<QVBoxLayout*>(widget->layout());
     auto add=new QPushButton(QStringLiteral("＋ 添加批次"));add->setProperty("kind","primary");add->setMaximumWidth(150);
-    auto titleItem=layout->takeAt(0);auto titleRow=new QHBoxLayout;titleRow->addWidget(titleItem->widget(),1);delete titleItem;titleRow->addWidget(add);layout->insertLayout(0,titleRow);
+    auto titleItem=layout->takeAt(0);auto titleRow=new QHBoxLayout;titleRow->addWidget(titleItem->widget(),1);delete titleItem;
+    auto plans=new QPushButton(QStringLiteral("定时计划 / 每日开关"));plans->setObjectName("automationButton");
+    connect(plans,&QPushButton::clicked,this,[this]{openAutomation();});
+    titleRow->addWidget(plans);titleRow->addWidget(add);layout->insertLayout(0,titleRow);
     connect(add,&QPushButton::clicked,this,[this]{const auto nav=findChildren<QPushButton*>("navigation");if(nav.size()==4)nav[2]->click();});
     auto metrics=new QHBoxLayout;metrics->setSpacing(16);
     for(const auto& caption:QStringList{QStringLiteral("批次"),QStringLiteral("运行中 testcase"),QStringLiteral("排队中"),QStringLiteral("异常 / 失败")}){
@@ -61,7 +64,7 @@ QWidget* MainWindow::tasksPage() {
     auto filters=new QHBoxLayout;filters->setContentsMargins(18,14,18,14);
     taskSearch_=new QLineEdit;taskSearch_->setObjectName("taskSearch");taskSearch_->setMinimumWidth(260);taskSearch_->setClearButtonEnabled(true);
     taskSearch_->setPlaceholderText(QStringLiteral("搜索批次、模板、版本或 testcase"));
-    taskSource_=new QComboBox;taskSource_->addItem(QStringLiteral("全部来源"),"");taskSource_->addItem(QStringLiteral("每日定时"),"scheduled");taskSource_->addItem(QStringLiteral("人工提交"),"manual");taskSource_->addItem(QStringLiteral("来源未分类"),"unknown");
+    taskSource_=new QComboBox;taskSource_->addItem(QStringLiteral("全部来源"),"");taskSource_->addItem(QStringLiteral("每日定时"),"scheduled");taskSource_->addItem(QStringLiteral("每周计划"),"plan");taskSource_->addItem(QStringLiteral("人工提交"),"manual");taskSource_->addItem(QStringLiteral("来源未分类"),"unknown");
     taskStatus_=new QComboBox;taskStatus_->setObjectName("taskStatus");
     for(const auto& choice:QList<QPair<QString,QString>>{{QStringLiteral("全部结果"),""},{"PASS","PASS"},{"FAIL","FAIL"},{"TIMEOUT","TIMEOUT"},{"CRASH","CRASH"},{"ERROR","ERROR"},{"UNKNOWN","UNKNOWN"},{QStringLiteral("执行中"),"RUNNING"},{QStringLiteral("排队中"),"QUEUED"},{"CANCELLED","CANCELLED"}})taskStatus_->addItem(choice.first,choice.second);
     filters->addWidget(taskSearch_,1);filters->addWidget(taskSource_);filters->addWidget(taskStatus_);content->addLayout(filters);
@@ -210,7 +213,9 @@ QWidget* MainWindow::regressionPage() {
     auto footer=new QHBoxLayout;auto plan=new QPushButton(QStringLiteral("每日计划 / 完整性"));plan->setObjectName("dailyPlan");
     auto first=new QPushButton(QStringLiteral("刷新 / 首页"));first->setObjectName("dailyRefresh");
     regressionNext_=new QPushButton(QStringLiteral("下一页"));regressionNext_->setObjectName("dailyNext");regressionNext_->setEnabled(false);
-    footer->addWidget(plan);footer->addStretch();footer->addWidget(first);footer->addWidget(regressionNext_);body->addLayout(footer);layout->addWidget(panel,1);
+    auto automation=new QPushButton(QStringLiteral("每日回归开关 / 定时计划"));automation->setObjectName("dailyAutomationButton");
+    connect(automation,&QPushButton::clicked,this,[this]{openAutomation();});
+    footer->addWidget(plan);footer->addWidget(automation);footer->addStretch();footer->addWidget(first);footer->addWidget(regressionNext_);body->addLayout(footer);layout->addWidget(panel,1);
     regressionDebounce_.setSingleShot(true);regressionDebounce_.setInterval(280);
     connect(&regressionDebounce_,&QTimer::timeout,this,[this]{queryDaily();});
     connect(dateA_,&QDateEdit::dateChanged,this,[this]{scheduleDailyQuery();});

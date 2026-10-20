@@ -60,6 +60,8 @@ public:
     std::vector<std::string> loadStoppedBatches() const;
     nlohmann::json loadWorkerControls() const;
     void saveWorkerControls(const nlohmann::json&);
+    nlohmann::json loadAutomation() const;
+    void saveAutomation(const nlohmann::json&);
     std::optional<std::pair<TaskId, std::string>> findSubmission(const std::string& key) const;
     std::optional<std::string> recoveryDecision(const std::string& run_id,
                                                TaskId task_id, const std::string& worker_id) const;

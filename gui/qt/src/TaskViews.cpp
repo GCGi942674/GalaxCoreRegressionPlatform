@@ -32,7 +32,7 @@ void MainWindow::showTasks() {
         const auto name=QString::fromStdString(context.value("name",batch.toStdString())),flow=QString::fromStdString(context.value("template",payload.value("flow",std::string())));
         auto title=new QLabel(name.toHtmlEscaped()+"<br><span style='color:#8493a8;font-size:10px'>"+batch.toHtmlEscaped()+"<br>"+flow.toHtmlEscaped()+"</span>");title->setContentsMargins(12,10,8,10);title->setTextFormat(Qt::RichText);title->setWordWrap(true);tasksTree_->setItemWidget(parent,0,title);
         parent->setText(0,QString{});parent->setData(0,Qt::UserRole+4,name+" "+batch+" "+flow);
-        parent->setText(1,revisions.join(", ")+"\n"+(source=="scheduled"?QStringLiteral("每日定时"):source=="manual"?QStringLiteral("人工提交"):QStringLiteral("来源未分类")));
+        parent->setText(1,revisions.join(", ")+"\n"+(source=="scheduled"?QStringLiteral("每日定时"):source=="plan"?QStringLiteral("每周计划"):source=="manual"?QStringLiteral("人工提交"):QStringLiteral("来源未分类")));
         auto badge=GcrpUi::badge(status);tasksTree_->setItemWidget(parent,2,badge);
         auto counts=new QLabel(QStringLiteral("<span style='color:#188365'>%1 PASS</span>　<span style='color:#c14450'>%2 FAIL</span>　<span style='color:#a36c12'>%3 TIMEOUT</span><br><span style='color:#8493a8;font-size:10px'>CRASH %4 · ERROR %5 · 取消 %6</span>").arg(pass).arg(fail).arg(timeout).arg(business["CRASH"]).arg(business["ERROR"]).arg(cancelled));counts->setTextFormat(Qt::RichText);counts->setContentsMargins(8,8,8,8);tasksTree_->setItemWidget(parent,3,counts);
         parent->setText(4,QStringLiteral("%1 / %2").arg(running).arg(queued));

@@ -550,4 +550,17 @@ void StateStore::saveWorkerControls(const nlohmann::json& controls) {
     Statement update(db_, "INSERT OR REPLACE INTO worker_management(name,value) VALUES('controls',?)");
     update.text(1,serialized);update.run();
 }
+nlohmann::json StateStore::loadAutomation() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statement query(db_,"SELECT value FROM worker_management WHERE name='automation'");
+    const int step=sqlite3_step(query.value);
+    if(step==SQLITE_DONE)return nullptr;
+    check(step,db_);return nlohmann::json::parse(column(query.value,0));
+}
+void StateStore::saveAutomation(const nlohmann::json& value) {
+    const auto serialized=value.dump();
+    std::lock_guard<std::mutex> lock(mutex_);
+    Statement update(db_,"INSERT OR REPLACE INTO worker_management(name,value) VALUES('automation',?)");
+    update.text(1,serialized);update.run();
+}
 } // namespace GCRP

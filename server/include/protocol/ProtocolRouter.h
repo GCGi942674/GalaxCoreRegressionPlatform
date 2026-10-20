@@ -19,6 +19,7 @@
 namespace GCRP {
 
 class SchedulingDriver;
+class AutomationService;
 
 } // namespace GCRP
 
@@ -38,7 +39,8 @@ public:
         TaskService& task_service,
         Scheduler& scheduler,
         WorkerManager& worker_manager,
-        SchedulingDriver& scheduling_driver
+        SchedulingDriver& scheduling_driver,
+        AutomationService* automation = nullptr
     );
 
     ProtocolMessage handle(const ProtocolMessage& request);
@@ -66,6 +68,7 @@ private:
     RunLogArchive log_archive_;
     GuiCatalog gui_catalog_;
     Api::TaskListQuery task_lists_;
+    AutomationService* automation_;
 };
 
 } // namespace GCRP::Protocol

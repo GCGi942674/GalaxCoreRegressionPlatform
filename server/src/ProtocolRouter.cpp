@@ -6,6 +6,7 @@
 #include "task/TaskType.h"
 #include "task/RegressionPayload.h"
 #include "scheduler/SchedulingDriver.h"
+#include "scheduler/AutomationService.h"
 #include "regression/RegressionService.h"
 #include "progress/ProgressService.h"
 #include "protocol/ApiQueries.h"
@@ -101,7 +102,8 @@ ProtocolRouter::ProtocolRouter(
     TaskService& task_service,
     Scheduler& scheduler,
     WorkerManager& worker_manager,
-    SchedulingDriver& scheduling_driver
+    SchedulingDriver& scheduling_driver,
+    AutomationService* automation
 )
     : task_service_(task_service)
     , scheduler_(scheduler)
@@ -112,6 +114,7 @@ ProtocolRouter::ProtocolRouter(
           static_cast<size_t>(std::max(1, Config::instance().getInt("cache.regression.max_entries", 1000))),
           std::max(1, Config::instance().getInt("cache.regression.ttl_seconds", 5)),dailyCacheOptions())
     , log_archive_(Config::instance().getString("server.log_archive_root", "./data/run-logs"))
+    , automation_(automation)
 {
 }
 
@@ -137,13 +140,28 @@ ProtocolMessage ProtocolRouter::handle(const ProtocolMessage& request) {
     ProtocolMessage response;
 
     switch (request.type) {
+        case MessageType::QUERY_AUTOMATION:
+        case MessageType::UPDATE_AUTOMATION: {
+            if(!automation_)return buildResponse(request,ResponseCode::INVALID_STATE,"automation is unavailable");
+            try{
+                if(request.type==MessageType::QUERY_AUTOMATION){
+                    Api::validate(request.data,{});
+                    return buildResponse(request,ResponseCode::OK,"ok",automation_->query());
+                }
+                return buildResponse(request,ResponseCode::OK,"ok",automation_->update(request.data));
+            }catch(const std::invalid_argument& e){return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());}
+             catch(const std::logic_error& e){return buildResponse(request,ResponseCode::INVALID_STATE,e.what());}
+        }
         case MessageType::PUBLISH_DAILY_PLAN: {
             try {
                 Api::validateDailyPlan(request.data);
-                scheduler_.publishDailyPlan(request.data);
+                if(automation_)automation_->publishDaily(request.data);
+                else scheduler_.publishDailyPlan(request.data);
                 return buildResponse(request,ResponseCode::OK,"ok",{{"published",true}});
             }catch(const std::invalid_argument& e){
                 return buildResponse(request,ResponseCode::INVALID_REQUEST,e.what());
+            }catch(const std::logic_error& e){
+                return buildResponse(request,ResponseCode::INVALID_STATE,e.what());
             }
         }
         case MessageType::QUERY_DAILY_PLAN: {

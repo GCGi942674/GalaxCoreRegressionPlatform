@@ -12,7 +12,7 @@ target_include_directories(gcrp_qt_transport PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party)
 target_link_libraries(gcrp_qt_transport PUBLIC Qt5::Core Qt5::Network)
 add_executable(gcrp_gui src/main.cpp src/MainWindow.cpp src/ConsolePages.cpp
-  src/TaskViews.cpp src/WorkerViews.cpp src/DailyView.cpp src/DailyComparison.cpp src/DailyEvidence.cpp)
+  src/TaskViews.cpp src/WorkerViews.cpp src/DailyView.cpp src/DailyComparison.cpp src/DailyEvidence.cpp src/AutomationView.cpp)
 target_link_libraries(gcrp_gui PRIVATE gcrp_qt_transport Qt5::Widgets)
 if(MSVC)
   target_compile_options(gcrp_gui PRIVATE /utf-8)

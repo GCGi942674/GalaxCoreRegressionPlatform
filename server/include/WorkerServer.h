@@ -19,6 +19,7 @@
 #include "worker/WorkerSession.h"
 #include "ConnectionSession.h"
 #include "persistence/StateStore.h"
+#include "scheduler/AutomationService.h"
 
 namespace GCRP {
 
@@ -46,6 +47,7 @@ private:
     std::unique_ptr<SchedulingCoordinator> coordinator_ptr_;
     std::unique_ptr<SchedulingDriver> scheduling_driver_ptr_;
     std::unique_ptr<TaskService> task_service_ptr_;
+    std::unique_ptr<AutomationService> automation_ptr_;
     std::unique_ptr<Protocol::ProtocolRouter> router_ptr_;
     std::mutex session_mutex_;
     std::unordered_map<Connection*, std::unique_ptr<ConnectionSession>> sessions_;

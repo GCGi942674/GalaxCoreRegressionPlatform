@@ -46,7 +46,8 @@ WorkerServer::WorkerServer(bool persistent)
     scheduling_driver_ptr_ = std::make_unique<SchedulingDriver>(*coordinator_ptr_);
     task_service_ptr_ = std::make_unique<TaskService>(*scheduler_ptr_, *scheduling_driver_ptr_);
     if (store_ptr_) task_service_ptr_->setNextTaskId(scheduler_ptr_->nextTaskId());
-    router_ptr_ = std::make_unique<Protocol::ProtocolRouter>(*task_service_ptr_, *scheduler_ptr_, *worker_manager_ptr_, *scheduling_driver_ptr_);
+    automation_ptr_=std::make_unique<AutomationService>(store_ptr_.get(),*scheduler_ptr_,*task_service_ptr_);
+    router_ptr_ = std::make_unique<Protocol::ProtocolRouter>(*task_service_ptr_, *scheduler_ptr_, *worker_manager_ptr_, *scheduling_driver_ptr_,automation_ptr_.get());
 
     LOG_INFO(LogModule::SERVER, "WorkerServer initialized");
     if (persistent) {
@@ -94,6 +95,7 @@ WorkerServer::WorkerServer(bool persistent)
                 if(query_jobs_.empty()&&query_stopping_)return;job=std::move(query_jobs_.front());query_jobs_.pop_front();
             }try{job();}catch(...){/* A failed read cannot kill the query worker. */}}
         });
+        automation_ptr_->start();
     }catch(...){
         {std::lock_guard<std::mutex> lock(query_mutex_);query_stopping_=true;}query_cv_.notify_all();
         for(auto& thread:query_threads_)if(thread.joinable())thread.join();
@@ -104,6 +106,7 @@ WorkerServer::WorkerServer(bool persistent)
 }
 
 WorkerServer::~WorkerServer() {
+    if(automation_ptr_)automation_ptr_->stop();
     {
         std::lock_guard<std::mutex> lock(liveness_mutex_);
         stopping_ = true;

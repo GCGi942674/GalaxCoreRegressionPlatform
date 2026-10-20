@@ -252,6 +252,23 @@ def run(config, dry_run=False, check_only=False, interval=30):
         revision, archive, plan = build_plan(config)
         print("DRY RUN: revision={} archive={} cases={}".format(revision, archive, len(plan)))
         return 0
+    daily_enabled = True
+    def accepted_round(state):
+        if not state or state.get("phase") != "submitting":
+            return False
+        plan = request(config, "query_daily_plan", {"date": state["day"]})
+        return plan.get("plan_available", False) and plan.get("suite_id") == state.get("batch_id")
+    if not check_only:
+        automation = request(config, "query_automation", {})
+        daily_enabled = automation.get("daily_enabled", False)
+        if not daily_enabled:
+            # Off blocks NEW rounds, not a previously accepted interrupted round.
+            # Do not create a state directory/lock just to report a disabled switch.
+            path = Path(config["server.clock_state_file"]).expanduser().resolve() if config.get("server.clock_state_file") else None
+            prior = json.loads(path.read_text(encoding="utf-8")) if path and path.is_file() else None
+            if not accepted_round(prior):
+                print("SKIPPED: daily regression is disabled on Server", flush=True)
+                return 0
     state_path = required_path(config, "server.clock_state_file")
     state_path.parent.mkdir(parents=True, exist_ok=True)
     with (state_path.parent / (state_path.name + ".lock")).open("a+") as lock:
@@ -262,14 +279,18 @@ def run(config, dry_run=False, check_only=False, interval=30):
         previous = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else None
         plan_path = state_path.with_name(state_path.name + ".plan.json")
         resume = bool(previous and previous.get("phase") == "submitting")
+        if not check_only and not daily_enabled:
+            if not accepted_round(previous):
+                print("SKIPPED: daily regression is disabled on Server", flush=True)
+                return 0
+            print("RESUMING: previously accepted daily round; switch remains disabled", flush=True)
         status = request(config, "query_status", {})
         active = sum(status[key] for key in ("pending", "queued", "assigned", "running"))
         if check_only:
             print("unfinished={} total={}".format(active, status["total"]))
             return 0
-        if active and not resume:
-            print("SKIPPED: {} unfinished tasks".format(active))
-            return 0
+        # Independent daytime/manual work must not suppress the nightly round.
+        # The previous daily groups are checked below instead of all tasks.
         if previous and not resume:
             if previous.get("phase") not in ("complete", "stopped") or previous.get("uncertain"):
                 raise RuntimeError("previous submission uncertain; inspect " + str(state_path))

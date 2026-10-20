@@ -14,6 +14,7 @@ constexpr bool isClientRequest(MessageType type) {
            type == MessageType::DELETE_TASK || type == MessageType::DELETE_BATCH ||
            type == MessageType::CANCEL_TASK || type == MessageType::QUERY_BATCH ||
            type == MessageType::PUBLISH_DAILY_PLAN || type == MessageType::QUERY_DAILY_PLAN ||
+           type == MessageType::QUERY_AUTOMATION || type == MessageType::UPDATE_AUTOMATION ||
            type == MessageType::CANCEL_BATCH || type == MessageType::QUERY_REGRESSION ||
            type == MessageType::QUERY_PROGRESS || type == MessageType::QUERY_ROLLBACK ||
            type == MessageType::QUERY_LOGS || type == MessageType::READ_LOG;

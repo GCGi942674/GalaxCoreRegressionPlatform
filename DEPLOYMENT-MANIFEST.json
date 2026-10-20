@@ -2,12 +2,12 @@
   "project": "GalaxCore Regression Platform",
   "flavor": "clean-source-deployment",
   "base_commit": "c88648d469958a49e63219205e0e79a679c17611",
-  "deployment_revision": "v2.5 - weekly full-half machine policies, resource admission and GUI layout (local changes)",
+  "deployment_revision": "v2.6 - daily regression switch and native weekly task plans (includes uncommitted v2.5 changes)",
   "authentication": false,
   "database_schema": 6,
   "database": "not included; initialized on first Server start",
   "original_development_copy": "preserved unchanged",
-  "file_count": 177,
+  "file_count": 180,
   "files": [
     {
       "path": ".gitattributes",
@@ -107,8 +107,8 @@
     },
     {
       "path": "common/include/protocol/ConnectionRole.h",
-      "bytes": 2015,
-      "sha256": "027260855049b0a0dc04b2c523471eb9abe6ca70fc0eca62b1a167fe54709b1c",
+      "bytes": 2109,
+      "sha256": "684b17544d748c81c6336b40e9b6e2df770f0b7505b677b982d7d638ebda0f81",
       "mode": "0o644"
     },
     {
@@ -137,8 +137,8 @@
     },
     {
       "path": "common/include/protocol/MessageType.h",
-      "bytes": 893,
-      "sha256": "53b2ba1ed13f789cc929ccd7b66dc57e7972d38bb45e741b2388f40b81c95a71",
+      "bytes": 938,
+      "sha256": "f92f8fbd623baefc1de51e5e918de580ac0f0d06de81051bef4bdab3b2c7e66b",
       "mode": "0o644"
     },
     {
@@ -257,8 +257,8 @@
     },
     {
       "path": "common/src/MessageType.cpp",
-      "bytes": 4254,
-      "sha256": "9324aabc63f7ec27207abc80bb488cfae3dee81d2f937a5ceb628fc4a0dc9c59",
+      "bytes": 4522,
+      "sha256": "4a5ab9442c59f45f00875586b2cdf686182be5995bada8b8ad5c088a6b05fe13",
       "mode": "0o644"
     },
     {
@@ -341,8 +341,8 @@
     },
     {
       "path": "gui/qt/CMakeLists.txt",
-      "bytes": 966,
-      "sha256": "301f39cc717f3ce9da722083495b2d98eb2dde44d7a408968a8a7e382d258476",
+      "bytes": 989,
+      "sha256": "5902b9d0390770377f13a269aefc1c05d77f8d3ee0bf22f2a0cb2894f45080a5",
       "mode": "0o644"
     },
     {
@@ -371,8 +371,8 @@
     },
     {
       "path": "gui/qt/include/MainWindow.h",
-      "bytes": 4646,
-      "sha256": "e60af121647a564307f2fc7a0ebb208d74480d42d4fedd6cac167f4b630bc491",
+      "bytes": 4673,
+      "sha256": "032be902dbfd51f541bff04c92d37695af1047c953dcb01c260146836d18df08",
       "mode": "0o644"
     },
     {
@@ -400,9 +400,15 @@
       "mode": "0o644"
     },
     {
+      "path": "gui/qt/src/AutomationView.cpp",
+      "bytes": 13784,
+      "sha256": "298c4c365a18db7d5c30149a46810ce6595a8b7afc3471e6facee18f175ef33d",
+      "mode": "0o644"
+    },
+    {
       "path": "gui/qt/src/ConsolePages.cpp",
-      "bytes": 29431,
-      "sha256": "08e6b395cf6bbf1886e61a8a36c6c4ec4b5ba5bab583f8c1fd89de1407b4162c",
+      "bytes": 29965,
+      "sha256": "4ad002bde17e8db19748f436f85333b7105d9df39b2a67400cf2b2e904e7e026",
       "mode": "0o644"
     },
     {
@@ -443,8 +449,8 @@
     },
     {
       "path": "gui/qt/src/TaskViews.cpp",
-      "bytes": 38976,
-      "sha256": "54a5754419389a1aeb61189e532ee3dc5e4082984e2cdb412b1e0c87a552a33c",
+      "bytes": 39022,
+      "sha256": "b5952f37034f02633dde194510b8fc8ef4359b68a3bf2ca280a291a528e07dbc",
       "mode": "0o644"
     },
     {
@@ -479,20 +485,20 @@
     },
     {
       "path": "README.md",
-      "bytes": 7220,
-      "sha256": "540d6683f9517923d7e6ef66a5e707075e6a8ded21578da0b6ef71ffc14d06b2",
+      "bytes": 9249,
+      "sha256": "793fa551aad5528eacc245875fa7ef4cbaef618589fca084d57cb1f7a802466a",
       "mode": "0o644"
     },
     {
       "path": "server/clock.py",
-      "bytes": 18786,
-      "sha256": "bf385a75b346b3681aa80b841d3c06f3d5191ee5bb895c0e94331d077dd71afe",
+      "bytes": 20171,
+      "sha256": "5ade7f5657fbde58f076ae8495299ad186f982cd65d607f1dc2d663a9a3b1672",
       "mode": "0o644"
     },
     {
       "path": "server/CMakeLists.txt",
-      "bytes": 1144,
-      "sha256": "f22167e5f6bd431bdd19a836cee505fd5be730d9af8b39ac4f8cd656138dccf2",
+      "bytes": 1174,
+      "sha256": "64a72fa5e2617fcd234e322bf17668a3af5e948c854d795d0e96c96195f6e68f",
       "mode": "0o644"
     },
     {
@@ -569,8 +575,8 @@
     },
     {
       "path": "server/include/persistence/StateStore.h",
-      "bytes": 4039,
-      "sha256": "0b850313d5c22e15977192c596f10267237e51de7a5749d6293538f3f208595e",
+      "bytes": 4130,
+      "sha256": "f90bb53702412f7555fabb8d62cda58b90905ab353d226e0c0d50744770bc0d2",
       "mode": "0o644"
     },
     {
@@ -581,8 +587,8 @@
     },
     {
       "path": "server/include/protocol/ApiQueries.h",
-      "bytes": 11042,
-      "sha256": "42d214fd4dbb7881f8327e2c0e29bd0d2cc060c7e5541e81e7ec7a55936f497f",
+      "bytes": 11136,
+      "sha256": "a9e89b6088254d8588cd0252bfda927fb9e72bf340a8695d3f254b1c998b1288",
       "mode": "0o644"
     },
     {
@@ -599,8 +605,8 @@
     },
     {
       "path": "server/include/protocol/ProtocolRouter.h",
-      "bytes": 1963,
-      "sha256": "62b1cd53a62897e284d522f93c425efcfa65ee1ea8bf175c24a77931b9de63e4",
+      "bytes": 2073,
+      "sha256": "3f7a2fdea323c2f37b2d09ae7da8e73db0796171a2c3c8ab3485442fbe428434",
       "mode": "0o644"
     },
     {
@@ -613,6 +619,12 @@
       "path": "server/include/regression/RegressionService.h",
       "bytes": 2939,
       "sha256": "2c55a6bc0960bfd7f385d0f4322f7967be555aa73f6bc27c8da99e1872d31574",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/include/scheduler/AutomationService.h",
+      "bytes": 1181,
+      "sha256": "9b98f0e5d79f2a4ce2470cd0f3c8908e13c9532f2fcee47ab4f9b1437dd6f93a",
       "mode": "0o644"
     },
     {
@@ -689,8 +701,8 @@
     },
     {
       "path": "server/include/WorkerServer.h",
-      "bytes": 2396,
-      "sha256": "5f5d9670a16888aad3a460a74ec34f977ebe49e19772afabeb21117c4a512d5d",
+      "bytes": 2493,
+      "sha256": "17655eafe818dbe0f97f523187aeababc6e24ce4fcea2da7528e561ecdc5bec8",
       "mode": "0o644"
     },
     {
@@ -703,6 +715,12 @@
       "path": "server/src/Acceptor.cpp",
       "bytes": 3435,
       "sha256": "4ddaf9be8f77c3a68511e11f4d5efc1db8e0cee23001373998bc6ebefacf4167",
+      "mode": "0o644"
+    },
+    {
+      "path": "server/src/AutomationService.cpp",
+      "bytes": 17516,
+      "sha256": "26322fbc70ff97f17274e9c39e64b18449c45850199302c3f34b7803fc70417b",
       "mode": "0o644"
     },
     {
@@ -785,8 +803,8 @@
     },
     {
       "path": "server/src/ProtocolRouter.cpp",
-      "bytes": 40906,
-      "sha256": "07896bd1e350f9801ddc092c466bea3bc0003b30c0fd55f759599ee3e5a67c7c",
+      "bytes": 42022,
+      "sha256": "30681fd290743ef2e4e3210c0d828932b18b319b33a5116fece4b992131fda40",
       "mode": "0o644"
     },
     {
@@ -827,8 +845,8 @@
     },
     {
       "path": "server/src/StateStore.cpp",
-      "bytes": 36089,
-      "sha256": "274aa53f39dfdc1055971fd30b1f4c49540cd099856f352420b3cda57fd60536",
+      "bytes": 36737,
+      "sha256": "1fa04da85ad555539c02ff9d315ac903faa9ea5f790a177bf7111596a71ecaf5",
       "mode": "0o644"
     },
     {
@@ -857,8 +875,8 @@
     },
     {
       "path": "server/src/WorkerServer.cpp",
-      "bytes": 9954,
-      "sha256": "47db299a1fc1ac73476fa79861ffb7865c8c72168cebfce0c0dd0dd3af302992",
+      "bytes": 10168,
+      "sha256": "97b1e4915fbd26dc709b189f553bc05e87d2a6bbdf63711086c2a590c0e35400",
       "mode": "0o644"
     },
     {
