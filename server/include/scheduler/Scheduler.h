@@ -6,6 +6,7 @@
 #include "task/TaskStatus.h"
 #include "worker/WorkerManager.h"
 #include "worker/Worker.h"
+#include "persistence/StateStore.h"
 #include <unordered_map>
 #include <vector>
 #include <optional>
@@ -16,10 +17,13 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <memory>
+#include "scheduler/ArtifactProtection.h"
 
 namespace GCRP {
 class WorkerDispatcher;
 class StateStore;
+class TimeoutPolicy;
 
 struct TaskAssignment {
     TaskId task_id;
@@ -42,24 +46,39 @@ struct WorkerInventorySnapshot {
 class Scheduler {
 public:
     explicit Scheduler(WorkerManager& worker_manager,
-                       size_t max_running_tasks = std::numeric_limits<size_t>::max());
+        size_t max_running_tasks = std::numeric_limits<size_t>::max(),
+        bool require_artifact_protection = false);
     void restoreFrom(StateStore& store);
+    void configureTimeouts();
+    void configureArtifactProtection(const std::string& file,
+        const std::string& root,
+        const std::string& clock_state = "",
+        int grace_seconds = 1800);
+    void refreshArtifactProtection();
+    void reserveArtifact(const std::string& revision);
     TaskId nextTaskId() const;
     void holdWorker(const WorkerId& worker_id);
-    nlohmann::json recoverWorker(const WorkerId& worker_id, const std::string& state,
-                                 TaskId task_id, const std::string& run_id, int max_retries);
-    nlohmann::json recoverOfflineWorkers(bool machine, const std::string& target,
-        const nlohmann::json& expected_tasks, int max_retries);
+    nlohmann::json recoverWorker(const WorkerId& worker_id,
+        const std::string& state,
+        TaskId task_id,
+        const std::string& run_id,
+        int max_retries);
+    nlohmann::json recoverOfflineWorkers(bool machine,
+        const std::string& target,
+        const nlohmann::json& expected_tasks,
+        int max_retries);
 
     bool submitTask(Task task);
-    std::optional<TaskId> submitTask(Task task, const std::string& submission_key,
-                                     const std::string& request_json);
-    std::optional<TaskId> findSubmittedTask(const std::string& submission_key,
-                                            const std::string& request_json) const;
+    std::optional<TaskId> submitTask(
+        Task task, const std::string& submission_key, const std::string& request_json);
+    std::optional<TaskId> findSubmittedTask(
+        const std::string& submission_key, const std::string& request_json) const;
     std::vector<TaskAssignment> schedule();
-    bool completeTask(TaskId task_id, TaskStatus final_status,
-                      nlohmann::json execution_summary = nullptr,
-                      const WorkerId& expected_worker = "", const std::string& expected_run = "");
+    bool completeTask(TaskId task_id,
+        TaskStatus final_status,
+        nlohmann::json execution_summary = nullptr,
+        const WorkerId& expected_worker = "",
+        const std::string& expected_run = "");
     bool cancelTask(TaskId task_id);
     size_t deleteRecords(TaskId id, const std::string& batch_id);
     bool isBatchDeleted(const std::string& batch_id) const;
@@ -68,7 +87,8 @@ public:
     std::optional<BatchSnapshot> cancelBatch(const std::string& batch_id);
     bool isBatchStopped(const std::string& batch_id) const;
 
-    bool markTaskStarted(TaskId task_id, const WorkerId& worker_id, const std::string& expected_run = "");
+    bool markTaskStarted(
+        TaskId task_id, const WorkerId& worker_id, const std::string& expected_run = "");
     bool rollbackAssignment(TaskId task_id);
     // nullopt: assignment was cancelled/replaced before the dispatch claim.
     // Cancellation/rollback returns false while the dispatcher is in flight.
@@ -81,14 +101,26 @@ public:
     // The tasks and generation are captured under the same lock.
     std::pair<uint64_t, std::vector<Task>> taskSnapshot() const;
     uint64_t taskGeneration() const;
+    nlohmann::json regressionDates(const std::string& stage, const std::string& before) const;
+    nlohmann::json archiveExportInfo(TaskId task_id, const std::string& run_id) const;
+    HistorySnapshot historySnapshot(const std::string& batch = "",
+        const std::vector<std::string>& dates = {},
+        const std::string& stage = "",
+        const std::string& target = "",
+        const std::vector<std::string>& revisions = {},
+        bool scheduled_only = false,
+        size_t max_rows = 200000) const;
+    uint64_t historyVersion(const std::vector<std::string>& dates = {}) const;
+    nlohmann::json historyStats() const;
     WorkerInventorySnapshot workerInventory() const;
     nlohmann::json statusCounts() const;
-    void publishDailyPlan(const nlohmann::json& manifest);
+    void publishDailyPlan(const nlohmann::json& manifest, bool submission_complete = false);
     nlohmann::json dailyPlan(const std::string& day) const;
-    uint64_t visitTasks(const std::function<void(const Task&)>& visitor,const std::string& batch_id="",
-                        const std::vector<std::string>& dates={}) const;
-    std::optional<std::pair<uint64_t,std::vector<TaskGroupSnapshot>>> taskGroups(
-        const std::string& target,const std::string& revision,const std::string& batch_id) const;
+    uint64_t visitTasks(const std::function<void(const Task&)>& visitor,
+        const std::string& batch_id = "",
+        const std::vector<std::string>& dates = {}) const;
+    std::optional<std::pair<uint64_t, std::vector<TaskGroupSnapshot>>> taskGroups(
+        const std::string& target, const std::string& revision, const std::string& batch_id) const;
     uint64_t excludedRegressionCount() const;
     std::vector<Task> getTasksByStatus(TaskStatus status) const;
 
@@ -112,29 +144,37 @@ private:
     WorkerManager& worker_manager_;
     size_t max_running_tasks_;
     std::unordered_map<TaskId, Task> tasks_;
-    struct TaskQueue : std::priority_queue<QueuedTaskInfo, std::vector<QueuedTaskInfo>, std::greater<QueuedTaskInfo>> {
+
+    struct TaskQueue : std::priority_queue<QueuedTaskInfo,
+                           std::vector<QueuedTaskInfo>,
+                           std::greater<QueuedTaskInfo>> {
         void reserve(size_t count) {
             if (this->c.capacity() < count)
                 this->c.reserve(std::max(count, this->c.capacity() * 2));
         }
     };
+
     TaskQueue task_queue_;
     std::unordered_set<TaskId> dispatching_;
     std::unordered_set<std::string> stopped_batches_;
-    std::unordered_map<std::string,nlohmann::json> daily_plans_;
+    std::unordered_map<std::string, nlohmann::json> daily_plans_;
     std::unordered_set<std::string> quarantined_workers_;
     std::unordered_set<std::string> reconciling_workers_;
     StateStore* store_{nullptr};
+    std::shared_ptr<TimeoutPolicy> timeout_policy_;
+    std::unique_ptr<ArtifactProtection> artifact_protection_;
+    bool require_artifact_protection_{false};
     uint64_t next_sequence_;
     uint64_t task_generation_{0};
     std::string last_selected_worker_;
     mutable std::mutex mutex_;
 
     bool isValidFinalStatus(TaskStatus status) const;
-    std::string recoverLost(Task& task, int max_retries, bool release_slot = true,
-                            const std::string& reason = "worker_lost");
+    std::string recoverLost(Task& task,
+        int max_retries,
+        bool release_slot = true,
+        const std::string& reason = "worker_lost");
     void releaseRecoveryHold(const WorkerId& worker_id);
-
 };
 
 } // namespace GCRP

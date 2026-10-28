@@ -14,7 +14,8 @@ Logger& Logger::instance() {
     return instance;
 }
 
-Logger::Logger() : log_dir_("./logs") {
+Logger::Logger()
+    : log_dir_("./logs") {
     try {
         ensureDirectoryExists(log_dir_);
         current_date_ = getDateDir();
@@ -27,31 +28,36 @@ Logger::~Logger() {
     shutdown();
 }
 
-void Logger::log(LogLevel level, LogModule module, const char* file, int line, const std::string& message) noexcept {
+void Logger::log(LogLevel level,
+    LogModule module,
+    const char* file,
+    int line,
+    const std::string& message) noexcept {
     try {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (level < current_level_) {
-        return;
-    }
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (level < current_level_) {
+            return;
+        }
 
-    checkDateChange();
+        checkDateChange();
 
-    std::string formatted = formatMessage(level, module, file, line, message);
-    std::string logfile = getLogFile(module, level);
-    bool is_error = (level == LogLevel::ERROR || level == LogLevel::FATAL);
+        std::string formatted = formatMessage(level, module, file, line, message);
+        std::string logfile = getLogFile(module, level);
+        bool is_error = (level == LogLevel::ERROR || level == LogLevel::FATAL);
 
-    writeToFile(logfile, formatted);
+        writeToFile(logfile, formatted);
 
-    // Also write to error.log for ERROR and FATAL
-    if (is_error) {
-        writeToFile("error.log", formatted);
-    }
+        // Also write to error.log for ERROR and FATAL
+        if (is_error) {
+            writeToFile("error.log", formatted);
+        }
     } catch (...) {
         // Logging must not change a completed business/transport operation.
     }
 }
 
-std::string Logger::formatMessage(LogLevel level, LogModule module, const char* file, int line, const std::string& message) {
+std::string Logger::formatMessage(
+    LogLevel level, LogModule module, const char* file, int line, const std::string& message) {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
@@ -117,7 +123,8 @@ void Logger::ensureDirectoryExists(const std::filesystem::path& path) {
     std::error_code ec;
     std::filesystem::create_directories(path, ec);
     if (ec && ec != std::errc::no_such_file_or_directory) {
-        std::cerr << "[WARN] Failed to create directory " << path << ": " << ec.message() << std::endl;
+        std::cerr << "[WARN] Failed to create directory " << path << ": " << ec.message()
+                  << std::endl;
     }
 }
 
@@ -135,10 +142,13 @@ void Logger::setLevel(LogLevel level) {
     std::lock_guard<std::mutex> lock(mutex_);
     current_level_ = level;
 }
+
 size_t Logger::pruneOldLogs(int days) {
-    if (days < 1 || days > 3650) throw std::invalid_argument("invalid log retention days");
+    if (days < 1 || days > 3650)
+        throw std::invalid_argument("invalid log retention days");
     std::lock_guard<std::mutex> lock(mutex_);
-    if (log_dir_.empty() || std::filesystem::is_symlink(log_dir_) || !std::filesystem::is_directory(log_dir_))
+    if (log_dir_.empty() || std::filesystem::is_symlink(log_dir_) ||
+        !std::filesystem::is_directory(log_dir_))
         throw std::runtime_error("unsafe log directory");
     const auto cutoff_time = std::chrono::system_clock::now() - std::chrono::hours(24 * days);
     const auto cutoff_t = std::chrono::system_clock::to_time_t(cutoff_time);
@@ -149,7 +159,10 @@ size_t Logger::pruneOldLogs(int days) {
     for (const auto& day : std::filesystem::directory_iterator(log_dir_)) {
         const auto date = day.path().filename().string();
         if (day.is_symlink() || !day.is_directory() || date.size() != 8 || date >= cutoff ||
-            !std::all_of(date.begin(), date.end(), [](unsigned char c) { return std::isdigit(c); })) continue;
+            !std::all_of(date.begin(), date.end(), [](unsigned char c) {
+                return std::isdigit(c);
+            }))
+            continue;
         for (const char* name : {"server.log", "task.log", "error.log"}) {
             const auto path = day.path() / name;
             if (std::filesystem::is_regular_file(path) && !std::filesystem::is_symlink(path)) {
@@ -157,7 +170,8 @@ size_t Logger::pruneOldLogs(int days) {
                 ++removed;
             }
         }
-        if (std::filesystem::is_empty(day.path())) std::filesystem::remove(day.path());
+        if (std::filesystem::is_empty(day.path()))
+            std::filesystem::remove(day.path());
     }
     return removed;
 }

@@ -12,21 +12,26 @@
 
 namespace GCRP {
 
-
 bool TaskService::isPriorityValid(int priority) const {
     return priority >= -100 && priority <= 100;
 }
 
 TaskService::TaskService(Scheduler& scheduler, SchedulingDriver& scheduling_driver)
     : scheduler_(scheduler)
-    , scheduling_driver_(scheduling_driver)
-{
+    , scheduling_driver_(scheduling_driver) {
 }
 
 std::optional<TaskId> TaskService::createTask(const CreateTaskRequest& request) {
-    const auto fingerprint = nlohmann::json({{"type", toString(request.type)},
-        {"target", request.target}, {"revision", request.revision},
-        {"priority", request.priority}, {"payload", request.payload}}).dump();
+    auto fingerprint_json = nlohmann::json({{"type", toString(request.type)},
+        {"target", request.target},
+        {"revision", request.revision},
+        {"priority", request.priority},
+        {"payload", request.payload}});
+    if (request.timeout_mode != "fixed" && request.timeout_mode != "auto")
+        return std::nullopt;
+    if (request.timeout_mode == "auto")
+        fingerprint_json["timeout_mode"] = "auto";
+    const auto fingerprint = fingerprint_json.dump();
     if (request.target.size() > kMaxTaskMetadataBytes ||
         request.revision.size() > kMaxTaskMetadataBytes - request.target.size()) {
         LOG_WARN(LogModule::TASK, "Task metadata exceeds size limit");
@@ -34,7 +39,8 @@ std::optional<TaskId> TaskService::createTask(const CreateTaskRequest& request) 
     }
     if (auto prior = scheduler_.findSubmittedTask(request.submission_key, fingerprint))
         return prior;
-    if (!validRegressionPayload(request.payload)) return std::nullopt;
+    if (!validRegressionPayload(request.payload))
+        return std::nullopt;
     nlohmann::json payload = request.payload;
     if (!payload.empty() && payload["spec_version"] == 1) {
         const auto directory = Config::instance().getString("server.templates_dir", "");
@@ -48,10 +54,12 @@ std::optional<TaskId> TaskService::createTask(const CreateTaskRequest& request) 
             }
             const auto source = nlohmann::json::parse(stream, nullptr, false);
             if (!source.is_object() || !source.contains("flow_config") ||
-                !validFlowConfig(source["flow_config"])) return std::nullopt;
+                !validFlowConfig(source["flow_config"]))
+                return std::nullopt;
             payload["spec_version"] = 2;
             payload["flow_config"] = source["flow_config"];
-            if (!validRegressionPayload(payload)) return std::nullopt;
+            if (!validRegressionPayload(payload))
+                return std::nullopt;
         }
     }
     if (request.type == TaskType::UNKNOWN) {
@@ -78,6 +86,7 @@ std::optional<TaskId> TaskService::createTask(const CreateTaskRequest& request) 
 
     Task task(id, request.type, request.target, request.revision);
     task.setPriority(request.priority);
+    task.setTimeoutMode(request.timeout_mode);
     task.setPayload(std::move(payload));
 
     auto accepted = scheduler_.submitTask(std::move(task), request.submission_key, fingerprint);
@@ -86,10 +95,13 @@ std::optional<TaskId> TaskService::createTask(const CreateTaskRequest& request) 
         return std::nullopt;
     }
 
-    LOG_INFO(LogModule::TASK, "task=" + std::to_string(id) + " created type=" + toString(request.type) + " target=" + request.target + " revision=" + request.revision);
+    LOG_INFO(LogModule::TASK,
+        "task=" + std::to_string(id) + " created type=" + toString(request.type) +
+            " target=" + request.target + " revision=" + request.revision);
 
-    try { scheduling_driver_.requestSchedule(); }
-    catch (const std::exception& error) {
+    try {
+        scheduling_driver_.requestSchedule();
+    } catch (const std::exception& error) {
         LOG_ERROR(LogModule::SCHEDULER, std::string("scheduling delayed: ") + error.what());
     }
 
@@ -102,8 +114,9 @@ std::optional<Task> TaskService::getTask(TaskId id) const {
 
 bool TaskService::cancelTask(TaskId id) {
     if (scheduler_.cancelTask(id)) {
-        try { scheduling_driver_.requestSchedule(); }
-        catch (const std::exception& error) {
+        try {
+            scheduling_driver_.requestSchedule();
+        } catch (const std::exception& error) {
             LOG_ERROR(LogModule::SCHEDULER, std::string("scheduling delayed: ") + error.what());
         }
         return true;

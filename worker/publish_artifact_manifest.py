@@ -25,11 +25,18 @@ def main():
     manifest = Path(str(archive) + ".manifest.json")
     if manifest.exists() or manifest.is_symlink():
         parser.error("manifest already exists; publish a new immutable artifact")
-    value = dict(spec_version=1, revision=args.revision, test2_revision=args.test2_revision,
-                 archive_sha256=file_digest(archive), test2_sha256=tree_digest(args.test2_root.resolve(strict=True)))
+    value = dict(
+        spec_version=1,
+        revision=args.revision,
+        test2_revision=args.test2_revision,
+        archive_sha256=file_digest(archive),
+        test2_sha256=tree_digest(args.test2_root.resolve(strict=True)),
+    )
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=archive.parent, prefix=".manifest-", delete=False) as out:
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=archive.parent, prefix=".manifest-", delete=False
+        ) as out:
             temporary = Path(out.name)
             json.dump(value, out, indent=2)
             out.write("\n")

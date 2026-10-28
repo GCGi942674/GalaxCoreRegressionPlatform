@@ -25,30 +25,20 @@ public:
     WorkerConnectionRegistry(const WorkerConnectionRegistry&) = delete;
     WorkerConnectionRegistry& operator=(const WorkerConnectionRegistry&) = delete;
 
-    bool bind(
-        const WorkerId& worker_id,
-        const ConnectionPtr& connection
-    );
-    std::optional<HandleId> bindWithHandle(const WorkerId& worker_id, const ConnectionPtr& connection);
+    bool bind(const WorkerId& worker_id, const ConnectionPtr& connection);
+    std::optional<HandleId> bindWithHandle(
+        const WorkerId& worker_id, const ConnectionPtr& connection);
     bool isCurrent(const WorkerId& worker_id, HandleId handle_id) const;
 
-    bool unbind(
-        const WorkerId& worker_id,
+    bool unbind(const WorkerId& worker_id,
         HandleId handle_id,
-        const std::function<void()>& on_unbound = {}
-    );
+        const std::function<void()>& on_unbound = {});
 
-    ConnectionPtr getConnection(
-        const WorkerId& worker_id
-    ) const;
+    ConnectionPtr getConnection(const WorkerId& worker_id) const;
 
-    bool hasConnection(
-        const WorkerId& worker_id
-    ) const;
+    bool hasConnection(const WorkerId& worker_id) const;
 
-    HandleId getHandleId(
-        const WorkerId& worker_id
-    ) const;
+    HandleId getHandleId(const WorkerId& worker_id) const;
 
 private:
     struct ConnectionEntry {

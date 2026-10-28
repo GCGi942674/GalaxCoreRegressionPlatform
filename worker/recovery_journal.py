@@ -15,9 +15,9 @@ def sync_directory(path):
 
 def write_json(path, value):
     path = Path(path)
-    fd, temporary = tempfile.mkstemp(prefix='.recovery-', dir=str(path.parent))
+    fd, temporary = tempfile.mkstemp(prefix=".recovery-", dir=str(path.parent))
     try:
-        with os.fdopen(fd, 'w') as stream:
+        with os.fdopen(fd, "w") as stream:
             json.dump(value, stream)
             stream.flush()
             os.fsync(stream.fileno())

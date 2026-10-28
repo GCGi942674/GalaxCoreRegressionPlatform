@@ -5,10 +5,14 @@ namespace GCRP {
 
 std::string toString(WorkerStatus status) {
     switch (status) {
-        case WorkerStatus::ONLINE:  return "ONLINE";
-        case WorkerStatus::OFFLINE: return "OFFLINE";
-        case WorkerStatus::DRAINING: return "DRAINING";
-        default:                    return "UNKNOWN";
+        case WorkerStatus::ONLINE:
+            return "ONLINE";
+        case WorkerStatus::OFFLINE:
+            return "OFFLINE";
+        case WorkerStatus::DRAINING:
+            return "DRAINING";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -19,8 +23,7 @@ Worker::Worker(const WorkerId& id, const std::string& hostname, uint32_t total_s
     , total_slots_(total_slots)
     , used_slots_(0)
     , registered_at_(std::chrono::system_clock::now())
-    , last_heartbeat_()
-{
+    , last_heartbeat_() {
 }
 
 uint32_t Worker::freeSlots() const {
@@ -36,7 +39,8 @@ bool Worker::hasFreeSlot() const {
 
 void Worker::updateHeartbeat() {
     last_heartbeat_ = std::chrono::system_clock::now();
-    if (status_ != WorkerStatus::DRAINING) status_ = WorkerStatus::ONLINE;
+    if (status_ != WorkerStatus::DRAINING)
+        status_ = WorkerStatus::ONLINE;
 }
 
 bool Worker::acquireSlot() {

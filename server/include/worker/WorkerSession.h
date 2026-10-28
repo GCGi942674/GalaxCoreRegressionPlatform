@@ -24,13 +24,11 @@ class SchedulingDriver;
 
 class WorkerSession {
 public:
-    explicit WorkerSession(
-        EventLoop* loop,
+    explicit WorkerSession(EventLoop* loop,
         WorkerManager& worker_manager,
         WorkerConnectionRegistry& registry,
         Protocol::ProtocolRouter& router,
-        SchedulingDriver& scheduling_driver
-    );
+        SchedulingDriver& scheduling_driver);
 
     ~WorkerSession();
 
@@ -42,9 +40,11 @@ public:
     void handleClose();
 
     bool isRegistered() const;
+
     bool permitsLogUpload(const Protocol::ProtocolMessage& request) {
-        return worker_id_ && binding_handle_ && registry_.isCurrent(*worker_id_,*binding_handle_) &&
-            validateWorkerIdentity(request);
+        return worker_id_ && binding_handle_ &&
+               registry_.isCurrent(*worker_id_, *binding_handle_) &&
+               validateWorkerIdentity(request);
     }
 
 private:

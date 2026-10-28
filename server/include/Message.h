@@ -5,8 +5,8 @@
 
 class Message {
 public:
-  virtual std::string onMessage(const std::string &msg) = 0;
-  virtual ~Message() = default;
+    virtual std::string onMessage(const std::string& msg) = 0;
+    virtual ~Message() = default;
 };
 
 #endif

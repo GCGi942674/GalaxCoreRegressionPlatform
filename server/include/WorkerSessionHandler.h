@@ -20,20 +20,20 @@ public:
         uint64_t idle_timeout_ms{60000};
     };
 
-    explicit WorkerSessionHandler(
-        WorkerManager& worker_manager,
+    explicit WorkerSessionHandler(WorkerManager& worker_manager,
         WorkerConnectionRegistry& registry,
         Scheduler& scheduler,
         TaskService& task_service,
         SchedulingCoordinator& coordinator,
-        Protocol::ProtocolRouter& router
-    );
+        Protocol::ProtocolRouter& router);
 
     ~WorkerSessionHandler() override;
 
     std::string onMessage(const std::string& msg) override;
 
-    void setEventLoop(EventLoop* loop) { loop_ = loop; }
+    void setEventLoop(EventLoop* loop) {
+        loop_ = loop;
+    }
 
 private:
     EventLoop* loop_{nullptr};

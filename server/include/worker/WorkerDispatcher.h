@@ -12,10 +12,7 @@ class WorkerDispatcher {
 public:
     virtual ~WorkerDispatcher() = default;
 
-    virtual bool dispatch(
-        const WorkerId& worker_id,
-        const Task& task
-    ) = 0;
+    virtual bool dispatch(const WorkerId& worker_id, const Task& task) = 0;
 };
 
 } // namespace GCRP

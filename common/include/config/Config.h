@@ -18,7 +18,7 @@ public:
     bool getBool(const std::string& key, bool default_value) const;
     bool contains(const std::string& key) const;
 
-        Config(const Config&) = delete;
+    Config(const Config&) = delete;
     Config& operator=(const Config&) = delete;
 
 private:

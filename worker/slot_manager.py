@@ -9,54 +9,58 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 from recovery_journal import remove, write_json
 from runtime_config import load_config
 from slot_identity import machine_identity, migrate_legacy_slots, slot_names
 from slot_process import ExistingWorker
+from host_resources import HostResources
 
 
-VALID_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
+VALID_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 
 
 def slot_settings(config):
     try:
-        count = int(config.get('worker.slots', ''))
+        count = int(config.get("worker.slots", ""))
     except ValueError:
-        raise ValueError('configure worker.slots as a number from 1 to 128')
+        raise ValueError("configure worker.slots as a number from 1 to 128")
     slots = slot_names(count)
-    if config.get('worker.checkout_parallelism', '1') != '1':
-        raise ValueError('worker.checkout_parallelism currently supports only 1')
-    output = Path(config.get('worker.output_root') or './worker-output').expanduser().resolve()
-    machine = machine_identity(output)['name']
-    if not all(VALID_ID.fullmatch(machine + '-' + slot) for slot in slots):
-        raise ValueError('generated Worker ID exceeds 64 characters')
+    if config.get("worker.checkout_parallelism", "1") != "1":
+        raise ValueError("worker.checkout_parallelism currently supports only 1")
+    output = Path(config.get("worker.output_root") or "./worker-output").expanduser().resolve()
+    machine = machine_identity(output)["name"]
+    if not all(VALID_ID.fullmatch(machine + "-" + slot) for slot in slots):
+        raise ValueError("generated Worker ID exceeds 64 characters")
     return machine, slots, output
 
 
 def identity_lock_path(output, worker_id):
-    identity = hashlib.sha256(worker_id.encode('utf-8')).hexdigest()[:24]
-    return output / ('active-' + identity + '.json.lock')
+    identity = hashlib.sha256(worker_id.encode("utf-8")).hexdigest()[:24]
+    return output / ("active-" + identity + ".json.lock")
 
 
 class SlotManager:
     def __init__(self, config):
         self.machine, self.desired, self.output_root = slot_settings(config)
-        self.slots_root = Path(config.get('worker.slots_root') or './worker/workers_slots').expanduser().resolve()
+        self.slots_root = (
+            Path(config.get("worker.slots_root") or "./worker/workers_slots").expanduser().resolve()
+        )
         self.machine_root = self.output_root / self.machine
         self.machine_root.mkdir(parents=True, exist_ok=True)
-        fd = os.open(str(self.machine_root / '.manager.lock'),
-                     os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        fd = os.open(
+            str(self.machine_root / ".manager.lock"), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600
+        )
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             os.close(fd)
-            raise RuntimeError('another manager owns this machine/output root')
+            raise RuntimeError("another manager owns this machine/output root")
         self.lock_fd = fd
         try:
-            migrate_legacy_slots(self.slots_root, self.output_root,
-                                 self.machine, self.desired)
+            migrate_legacy_slots(self.slots_root, self.output_root, self.machine, self.desired)
         except BaseException:
             os.close(fd)
             raise
@@ -65,6 +69,9 @@ class SlotManager:
         self.restart_after = {}
         self.stopping = False
         self.reload = False
+        self.resources = HostResources(self.machine_root / ".resources.json", self.machine)
+        self.resource_resample = threading.Event()
+        self.resource_stop = threading.Event()
         # A killed Manager need not kill its Workers. Validate ALL survivors
         # before starting/draining anything; don't pretend they are our children.
         adopted = {}
@@ -77,21 +84,50 @@ class SlotManager:
             raise
         for slot, process in adopted.items():
             self.children[slot] = (process, time.monotonic())
-            print('[MANAGER] adopted {} pid={}'.format(slot, process.pid), flush=True)
+            print("[MANAGER] adopted {} pid={}".format(slot, process.pid), flush=True)
             if slot not in self.desired:
                 self.drain(slot)
+        self.update_resource_settings()
+        self.resource_thread = threading.Thread(
+            target=self.resource_loop, name="host-resources", daemon=True
+        )
+        self.resource_thread.start()
 
     def output(self, slot):
         return self.machine_root / slot
 
+    def update_resource_settings(self):
+        # Publish immutable inputs from the supervisor; the sampler never walks
+        # its mutable children dictionary and performs all filesystem I/O itself.
+        slots = set(self.desired) | set(self.children)
+        paths = [self.output_root, self.slots_root]
+        for slot in slots:
+            paths.extend([self.output(slot), self.slots_root / self.worker_id(slot) / "galaxcore"])
+        self.resource_settings = (len(self.desired), tuple(paths))
+
+    def sample_resources(self):
+        count, paths = self.resource_settings
+        self.resources.sample(count, paths)
+
+    def resource_loop(self):
+        # Exactly one sampler. A blocked filesystem read must never hold up
+        # supervision or cause replacement threads to accumulate.
+        while not self.resource_stop.is_set():
+            self.resource_resample.clear()
+            started = time.monotonic()
+            self.sample_resources()
+            if self.resource_stop.is_set():
+                return
+            self.resource_resample.wait(max(0.0, 10 - (time.monotonic() - started)))
+
     def worker_id(self, slot):
-        return self.machine + '-' + slot
+        return self.machine + "-" + slot
 
     def drain(self, slot):
         output = self.output(slot)
         output.mkdir(parents=True, exist_ok=True)
-        write_json(output / '.drain', dict(machine_id=self.machine, slot_id=slot))
-        print('[MANAGER] drain requested: ' + slot, flush=True)
+        write_json(output / ".drain", dict(machine_id=self.machine, slot_id=slot))
+        print("[MANAGER] drain requested: " + slot, flush=True)
 
     def running_elsewhere(self, slot):
         output = self.output(slot)
@@ -111,33 +147,55 @@ class SlotManager:
         if self.running_elsewhere(slot):
             process = self.existing_worker(slot)
             self.children[slot] = (process, time.monotonic())
-            print('[MANAGER] adopted {} pid={}'.format(slot, process.pid), flush=True)
+            print("[MANAGER] adopted {} pid={}".format(slot, process.pid), flush=True)
             return
         output = self.output(slot)
-        remove(output / '.drain')
-        args = [sys.executable, '-B', '-u', str(Path(__file__).with_name('gcrp_worker.py')),
-                '--worker-id', self.worker_id(slot), '--machine-id', self.machine,
-                '--slot-id', slot, '--output', str(output)]
-        process = subprocess.Popen(args, close_fds=True)
+        remove(output / ".drain")
+        args = [
+            sys.executable,
+            "-B",
+            "-u",
+            str(Path(__file__).with_name("gcrp_worker.py")),
+            "--worker-id",
+            self.worker_id(slot),
+            "--machine-id",
+            self.machine,
+            "--slot-id",
+            slot,
+            "--output",
+            str(output),
+        ]
+        env = os.environ.copy()
+        env["GCRP_RESOURCE_SNAPSHOT"] = str(self.resources.path)
+        env["GCRP_MACHINE_SLOTS"] = str(len(self.desired))
+        process = subprocess.Popen(args, close_fds=True, env=env)
         self.children[slot] = (process, time.monotonic())
-        print('[MANAGER] started {} pid={}'.format(slot, process.pid), flush=True)
+        print("[MANAGER] started {} pid={}".format(slot, process.pid), flush=True)
 
     def existing_worker(self, slot):
-        return ExistingWorker(self.output(slot), self.worker_id(slot),
-            Path(__file__).with_name('gcrp_worker.py'), lambda: self.running_elsewhere(slot))
+        return ExistingWorker(
+            self.output(slot),
+            self.worker_id(slot),
+            Path(__file__).with_name("gcrp_worker.py"),
+            lambda: self.running_elsewhere(slot),
+        )
 
     def reload_config(self):
         config = load_config("worker")
         machine, slots, output = slot_settings(config)
-        slots_root = Path(config.get('worker.slots_root') or './worker/workers_slots').expanduser().resolve()
+        slots_root = (
+            Path(config.get("worker.slots_root") or "./worker/workers_slots").expanduser().resolve()
+        )
         if machine != self.machine or output != self.output_root or slots_root != self.slots_root:
-            raise ValueError('machine identity and roots cannot change while running')
+            raise ValueError("machine identity and roots cannot change while running")
         migrate_legacy_slots(self.slots_root, self.output_root, self.machine, slots)
         for slot in self.desired:
             if slot not in slots and slot in self.children:
                 self.drain(slot)
         self.desired = slots
-        print('[MANAGER] slots now: ' + ','.join(slots), flush=True)
+        self.update_resource_settings()
+        self.resource_resample.set()
+        print("[MANAGER] slots now: " + ",".join(slots), flush=True)
 
     def run(self):
         try:
@@ -147,7 +205,9 @@ class SlotManager:
                     try:
                         self.reload_config()
                     except (OSError, ValueError) as error:
-                        print('[MANAGER] reload rejected: ' + str(error), file=sys.stderr, flush=True)
+                        print(
+                            "[MANAGER] reload rejected: " + str(error), file=sys.stderr, flush=True
+                        )
                 for slot, item in list(self.children.items()):
                     process, started = item
                     result = process.poll()
@@ -155,42 +215,62 @@ class SlotManager:
                         continue
                     del self.children[slot]
                     if self.stopping or slot not in self.desired:
-                        print('[MANAGER] drained {} exit={}'.format(slot, result), flush=True)
+                        print("[MANAGER] drained {} exit={}".format(slot, result), flush=True)
                         continue
                     if time.monotonic() - started >= 30:
                         self.failures[slot] = 0
                     count = self.failures.get(slot, 0) + 1
                     self.failures[slot] = count
                     if count >= 5:
-                        print('[MANAGER] slot {} quarantined after repeated exits'.format(slot),
-                              file=sys.stderr, flush=True)
+                        print(
+                            "[MANAGER] slot {} quarantined after repeated exits".format(slot),
+                            file=sys.stderr,
+                            flush=True,
+                        )
                     else:
-                        self.restart_after[slot] = time.monotonic() + min(2 ** count, 30)
-                        print('[MANAGER] slot {} exited {}; retry {}'.format(slot, result, count),
-                              file=sys.stderr, flush=True)
+                        self.restart_after[slot] = time.monotonic() + min(2**count, 30)
+                        print(
+                            "[MANAGER] slot {} exited {}; retry {}".format(slot, result, count),
+                            file=sys.stderr,
+                            flush=True,
+                        )
                 if self.stopping and not self.children:
                     return
                 if not self.stopping:
                     for slot in self.desired:
-                        if (slot not in self.children and self.failures.get(slot, 0) < 5 and
-                                time.monotonic() >= self.restart_after.get(slot, 0)):
+                        if (
+                            slot not in self.children
+                            and self.failures.get(slot, 0) < 5
+                            and time.monotonic() >= self.restart_after.get(slot, 0)
+                        ):
                             self.start(slot)
-                time.sleep(.2)
+                self.update_resource_settings()
+                time.sleep(0.2)
         finally:
+            self.resource_stop.set()
+            self.resource_resample.set()
+            # Do not join: the daemon may be stuck in a filesystem syscall.
             # A manager crash does not revoke the slot process's OS identity lock.
             os.close(self.lock_fd)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--migration-preview', action='store_true',
-                        help='show legacy SVN copies that would be reused, then exit')
+    parser.add_argument(
+        "--migration-preview",
+        action="store_true",
+        help="show legacy SVN copies that would be reused, then exit",
+    )
     args = parser.parse_args()
     try:
         config = load_config("worker")
         if args.migration_preview:
             machine, slots, output = slot_settings(config)
-            root = Path(config.get('worker.slots_root') or './worker/workers_slots').expanduser().resolve()
+            root = (
+                Path(config.get("worker.slots_root") or "./worker/workers_slots")
+                .expanduser()
+                .resolve()
+            )
             migrate_legacy_slots(root, output, machine, slots, preview=True)
             return 0
         manager = SlotManager(config)
@@ -212,10 +292,10 @@ def main():
     try:
         manager.run()
     except (OSError, ValueError, RuntimeError) as error:
-        print('[MANAGER] ' + str(error), file=sys.stderr)
+        print("[MANAGER] " + str(error), file=sys.stderr)
         return 1
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

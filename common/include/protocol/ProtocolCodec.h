@@ -13,23 +13,14 @@ namespace GCRP::Protocol {
 class ProtocolCodec {
 public:
     static bool decode(
-        const std::string& json_text,
-        ProtocolMessage& message,
-        ProtocolError& error
-    );
+        const std::string& json_text, ProtocolMessage& message, ProtocolError& error);
 
     static bool encode(
-        const ProtocolMessage& message,
-                std::string& json_text,
-        ProtocolError& error
-    );
+        const ProtocolMessage& message, std::string& json_text, ProtocolError& error);
 
 private:
     static bool validateEnvelope(
-        const nlohmann::json& j,
-        ProtocolMessage& message,
-        ProtocolError& error
-    );
+        const nlohmann::json& j, ProtocolMessage& message, ProtocolError& error);
 
     static std::string messageTypeToString(MessageType type);
 };

@@ -1,0 +1,5 @@
+[tool.black]
+line-length = 100
+target-version = ["py36"]
+include = '\.py$'
+extend-exclude = '/(third_party|build|database|logs|worker-output|workers_slots)/'

@@ -19,6 +19,7 @@
 namespace GCRP {
 
 class SchedulingDriver;
+class AutomationService;
 
 } // namespace GCRP
 
@@ -34,28 +35,31 @@ enum class ResponseCode {
 
 class ProtocolRouter {
 public:
-    ProtocolRouter(
-        TaskService& task_service,
+    ProtocolRouter(TaskService& task_service,
         Scheduler& scheduler,
         WorkerManager& worker_manager,
-        SchedulingDriver& scheduling_driver
-    );
+        SchedulingDriver& scheduling_driver,
+        AutomationService* automation = nullptr);
 
     ProtocolMessage handle(const ProtocolMessage& request);
-    void holdWorker(const WorkerId& id) { scheduler_.holdWorker(id); }
-    size_t pruneLogs(int days) { return log_archive_.pruneOlderThan(days); }
+
+    void holdWorker(const WorkerId& id) {
+        scheduler_.holdWorker(id);
+    }
+
+    size_t pruneLogs(int days) {
+        return log_archive_.pruneOlderThan(days);
+    }
 
     ProtocolRouter(const ProtocolRouter&) = delete;
     ProtocolRouter& operator=(const ProtocolRouter&) = delete;
 
 private:
     ResponseCode toErrorCode(TaskStatus status) const;
-    ProtocolMessage buildResponse(
-        const ProtocolMessage& request,
+    ProtocolMessage buildResponse(const ProtocolMessage& request,
         ResponseCode code,
         const std::string& message = "",
-        const nlohmann::json& data = nlohmann::json{}
-    ) const;
+        const nlohmann::json& data = nlohmann::json{}) const;
     nlohmann::json taskToJson(const Task& task) const;
 
     TaskService& task_service_;
@@ -66,6 +70,7 @@ private:
     RunLogArchive log_archive_;
     GuiCatalog gui_catalog_;
     Api::TaskListQuery task_lists_;
+    AutomationService* automation_;
 };
 
 } // namespace GCRP::Protocol

@@ -5,7 +5,7 @@
 
 class EchoHandler : public Message {
 public:
-  virtual std::string onMessage(const std::string &msg) override;
+    virtual std::string onMessage(const std::string& msg) override;
 };
 
 #endif

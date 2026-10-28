@@ -5,10 +5,7 @@
 
 namespace GCRP {
 
-enum class TaskType {
-    REGRESSION,
-    UNKNOWN
-};
+enum class TaskType { REGRESSION, UNKNOWN };
 
 std::string toString(TaskType type);
 

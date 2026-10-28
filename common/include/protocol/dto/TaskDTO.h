@@ -17,6 +17,7 @@ struct SubmitTaskRequest {
     int priority{0};
     nlohmann::json payload = nlohmann::json::object();
     std::string submission_key;
+    std::string timeout_mode{"fixed"};
 };
 
 struct QueryTaskRequest {
@@ -42,6 +43,7 @@ struct TaskResultRequest {
 };
 
 struct TaskAssignRequest {
+    nlohmann::json timeout_decision = nullptr;
     TaskId task_id{0};
     std::string run_id;
     TaskType task_type{TaskType::UNKNOWN};

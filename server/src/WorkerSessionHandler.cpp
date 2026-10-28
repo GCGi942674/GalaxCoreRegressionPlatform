@@ -8,22 +8,19 @@ using namespace GCRP::Protocol;
 
 namespace GCRP {
 
-WorkerSessionHandler::WorkerSessionHandler(
-    WorkerManager& worker_manager,
+WorkerSessionHandler::WorkerSessionHandler(WorkerManager& worker_manager,
     WorkerConnectionRegistry& registry,
     Scheduler& scheduler,
     TaskService& task_service,
     SchedulingCoordinator& coordinator,
-    Protocol::ProtocolRouter& router
-)
+    Protocol::ProtocolRouter& router)
     : worker_manager_(worker_manager)
     , registry_(registry)
     , dispatcher_(registry)
     , scheduler_(scheduler)
     , task_service_(task_service)
     , coordinator_(coordinator)
-    , router_(router)
-{
+    , router_(router) {
     LOG_INFO(LogModule::SERVER, "WorkerSessionHandler initialized");
 }
 

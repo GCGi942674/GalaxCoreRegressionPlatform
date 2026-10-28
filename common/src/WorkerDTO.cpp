@@ -38,8 +38,8 @@ bool fromJson(const nlohmann::json& j, WorkerRegisterRequest& out, ProtocolError
     }
     out.explicit_identity = j.contains("machine_id");
     for (const auto& field : {"machine_id", "slot_id"}) {
-        if (j.contains(field) && (!j[field].is_string() ||
-                j[field].get<std::string>().empty() || j[field].get<std::string>().size() > 64)) {
+        if (j.contains(field) && (!j[field].is_string() || j[field].get<std::string>().empty() ||
+                                     j[field].get<std::string>().size() > 64)) {
             error.code = ProtocolErrorCode::INVALID_FIELD_VALUE;
             error.message = std::string("invalid field: ") + field;
             return false;
@@ -62,11 +62,21 @@ bool fromJson(const nlohmann::json& j, WorkerRegisterRequest& out, ProtocolError
         return false;
     }
 
-    out.control_v1=false;
-    if(j.contains("control_version")){
-        if(!j["control_version"].is_number_unsigned()||j["control_version"]!=1||out.slots!=1){
-            error.message="control v1 requires a single-slot Worker";return false;}
-        out.control_v1=true;
+    if (j.contains("timeout_version")) {
+        if (!j["timeout_version"].is_number_unsigned() || j["timeout_version"] != 1) {
+            error.message = "unsupported timeout observation version";
+            return false;
+        }
+        out.timeout_v1 = true;
+    }
+    out.control_v1 = false;
+    if (j.contains("control_version")) {
+        if (!j["control_version"].is_number_unsigned() || j["control_version"] != 1 ||
+            out.slots != 1) {
+            error.message = "control v1 requires a single-slot Worker";
+            return false;
+        }
+        out.control_v1 = true;
     }
     return true;
 }
@@ -80,7 +90,10 @@ nlohmann::json toJson(const WorkerRegisterRequest& value) {
         j["slot_id"] = value.slot_id;
     }
     j["slots"] = value.slots;
-    if(value.control_v1)j["control_version"]=1;
+    if (value.timeout_v1)
+        j["timeout_version"] = 1;
+    if (value.control_v1)
+        j["control_version"] = 1;
     return j;
 }
 

@@ -10,7 +10,8 @@ class GcrpClient {
 public:
     GcrpClient(std::string host, uint16_t port, int timeout_ms = 5000);
     Protocol::ProtocolMessage request(Protocol::MessageType, const nlohmann::json&);
-    Protocol::ProtocolMessage submit(const std::string& target, const std::string& revision, int priority = 0);
+    Protocol::ProtocolMessage submit(
+        const std::string& target, const std::string& revision, int priority = 0);
     Protocol::ProtocolMessage query(uint64_t task_id);
     Protocol::ProtocolMessage cancel(uint64_t task_id);
     Protocol::ProtocolMessage queryBatch(const std::string& batch_id);
@@ -18,6 +19,7 @@ public:
     Protocol::ProtocolMessage queryRegression(const nlohmann::json& filter);
     Protocol::ProtocolMessage queryProgress(const nlohmann::json& filter);
     Protocol::ProtocolMessage queryRollback(const nlohmann::json& filter);
+
 private:
     std::string host_;
     uint16_t port_;

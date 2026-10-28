@@ -10,22 +10,22 @@ class EventLoop;
 
 class EventLoopThread {
 public:
-  EventLoopThread();
-  ~EventLoopThread();
+    EventLoopThread();
+    ~EventLoopThread();
 
-  EventLoop *startLoop();
+    EventLoop* startLoop();
 
-  void stop();
-
-private:
-  void threadFunc();
+    void stop();
 
 private:
-  EventLoop *loop_;
-  bool exiting_;
-  std::thread thread_;
-  std::mutex mutex_;
-  std::condition_variable cond_;
+    void threadFunc();
+
+private:
+    EventLoop* loop_;
+    bool exiting_;
+    std::thread thread_;
+    std::mutex mutex_;
+    std::condition_variable cond_;
 };
 
 #endif // EventLoopThread_H_

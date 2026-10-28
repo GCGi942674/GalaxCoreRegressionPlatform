@@ -5,11 +5,7 @@
 
 namespace GCRP {
 
-enum class WorkerStatus {
-    ONLINE,
-    OFFLINE,
-    DRAINING
-};
+enum class WorkerStatus { ONLINE, OFFLINE, DRAINING };
 
 std::string toString(WorkerStatus status);
 

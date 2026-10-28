@@ -26,7 +26,7 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "worker"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from runtime_config import load_config
 from daily_log import daily_log
 from backup_database import backup_database
@@ -108,13 +108,29 @@ def discover_cases(root, target):
             raise ValueError("target must be a directory or an absolute runlist")
         paths = []
         for current, dirs, files in os.walk(str(directory)):
-            dirs[:] = sorted(name for name in dirs if name not in
-                             (".svn", ".git", "output", "outputs", "result", "results",
-                              "report", "reports", "log", "logs", "__pycache__"))
+            dirs[:] = sorted(
+                name
+                for name in dirs
+                if name
+                not in (
+                    ".svn",
+                    ".git",
+                    "output",
+                    "outputs",
+                    "result",
+                    "results",
+                    "report",
+                    "reports",
+                    "log",
+                    "logs",
+                    "__pycache__",
+                )
+            )
             if "run.tcl" in files:
                 paths.append(within(root, Path(current) / "run.tcl"))
-    cases = sorted(set(path.relative_to(root).as_posix() for path in paths
-                       if path.name == "run.tcl"))
+    cases = sorted(
+        set(path.relative_to(root).as_posix() for path in paths if path.name == "run.tcl")
+    )
     if not cases:
         raise ValueError("target has no run.tcl: " + str(target))
     if len(cases) > 100000:
@@ -134,9 +150,14 @@ def load_template(directory, name):
     if not isinstance(template, dict):
         raise ValueError("template must be an object")
     flow = template.get("flow_config")
-    if (not isinstance(flow, dict) or not 1 <= len(flow) <= 64 or
-            any(not SAFE_KEY.fullmatch(key) or type(value) is not int or
-                not 0 <= value <= 1000000 for key, value in flow.items())):
+    if (
+        not isinstance(flow, dict)
+        or not 1 <= len(flow) <= 64
+        or any(
+            not SAFE_KEY.fullmatch(key) or type(value) is not int or not 0 <= value <= 1000000
+            for key, value in flow.items()
+        )
+    ):
         raise ValueError("invalid template flow_config: " + str(path))
     return template
 
@@ -149,7 +170,11 @@ def build_plan(config):
     source = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
     if isinstance(source, list):
         source = {"tasks": source}
-    if not isinstance(source, dict) or not isinstance(source.get("tasks"), list) or not source["tasks"]:
+    if (
+        not isinstance(source, dict)
+        or not isinstance(source.get("tasks"), list)
+        or not source["tasks"]
+    ):
         raise ValueError("Tasks.yaml must contain a nonempty tasks list")
     entries = source["tasks"]
     if any(not isinstance(entry, dict) or not entry.get("template") for entry in entries):
@@ -165,8 +190,15 @@ def build_plan(config):
             raise ValueError("max_retry requires recovery support; set it to 0 for " + name)
         priority = entry.get("priority", template.get("priority", 0))
         timeout = entry.get("max_time", template.get("max_time", 3600))
-        if (type(priority) is not int or not -100 <= priority <= 100 or
-                type(timeout) is not int or not 1 <= timeout <= 86400):
+        timeout_mode = entry.get("timeout_mode", template.get("timeout_mode", "fixed"))
+        if timeout_mode not in ("fixed", "auto"):
+            raise ValueError("invalid timeout_mode for " + name)
+        if (
+            type(priority) is not int
+            or not -100 <= priority <= 100
+            or type(timeout) is not int
+            or not 1 <= timeout <= 86400
+        ):
             raise ValueError("invalid priority or max_time for " + name)
         target = entry.get("target")
         if not isinstance(target, str) or not target:
@@ -176,14 +208,30 @@ def build_plan(config):
         if any(len(value) > 128 for value in (suite, task_name, batch_id)):
             raise ValueError("task context is too long")
         for case in discover_cases(root, target):
-            plan.append({"task_type": "REGRESSION", "target": task_name,
-                         "revision": revision, "priority": priority,
-                         "payload": {"spec_version": 2, "case": case, "flow": name,
-                                     "timeout_seconds": timeout,
-                                     "flow_config": dict(template["flow_config"]),
-                                     "context": {"template": name, "suite": suite,
-                                                 "name": task_name, "batch_id": batch_id + "-task-" + str(task_index + 1),
-                                                 "source": "scheduled", "date": batch_id[:10]}}})
+            plan.append(
+                {
+                    **({"timeout_mode": "auto"} if timeout_mode == "auto" else {}),
+                    "task_type": "REGRESSION",
+                    "target": task_name,
+                    "revision": revision,
+                    "priority": priority,
+                    "payload": {
+                        "spec_version": 2,
+                        "case": case,
+                        "flow": name,
+                        "timeout_seconds": timeout,
+                        "flow_config": dict(template["flow_config"]),
+                        "context": {
+                            "template": name,
+                            "suite": suite,
+                            "name": task_name,
+                            "batch_id": batch_id + "-task-" + str(task_index + 1),
+                            "source": "scheduled",
+                            "date": batch_id[:10],
+                        },
+                    },
+                }
+            )
     if not plan:
         raise ValueError("empty task plan")
     return revision, archive, plan
@@ -203,8 +251,9 @@ def request(config, kind, data):
     host = config.get("network.server_ip")
     port = int(config.get("server.port", 0))
     timeout = float(config.get("network.timeout_ms", 5000)) / 1000
-    body = json.dumps({"version": 1, "type": kind, "request_id": 1,
-                       "data": data}, separators=(",", ":")).encode("utf-8")
+    body = json.dumps(
+        {"version": 1, "type": kind, "request_id": 1, "data": data}, separators=(",", ":")
+    ).encode("utf-8")
     if len(body) > MAX_FRAME:
         raise ValueError("request exceeds protocol limit")
     with socket.create_connection((host, port), timeout=timeout) as sock:
@@ -214,8 +263,12 @@ def request(config, kind, data):
         if not 0 < size <= MAX_FRAME:
             raise ValueError("invalid GCRP response frame")
         reply = json.loads(recv_exact(sock, size).decode("utf-8"))
-    if (not isinstance(reply, dict) or reply.get("type") != "response" or
-            reply.get("request_id") != 1 or not isinstance(reply.get("data"), dict)):
+    if (
+        not isinstance(reply, dict)
+        or reply.get("type") != "response"
+        or reply.get("request_id") != 1
+        or not isinstance(reply.get("data"), dict)
+    ):
         raise ValueError("invalid GCRP response")
     result = reply["data"]
     if result.get("code") == 3 and result.get("message") == "batch stopped":
@@ -252,6 +305,31 @@ def run(config, dry_run=False, check_only=False, interval=30):
         revision, archive, plan = build_plan(config)
         print("DRY RUN: revision={} archive={} cases={}".format(revision, archive, len(plan)))
         return 0
+    daily_enabled = True
+
+    def accepted_round(state):
+        if not state or state.get("phase") != "submitting":
+            return False
+        plan = request(config, "query_daily_plan", {"date": state["day"]})
+        return plan.get("plan_available", False) and plan.get("suite_id") == state.get("batch_id")
+
+    if not check_only:
+        automation = request(config, "query_automation", {})
+        daily_enabled = automation.get("daily_enabled", False)
+        if not daily_enabled:
+            # Off blocks NEW rounds, not a previously accepted interrupted round.
+            # Do not create a state directory/lock just to report a disabled switch.
+            path = (
+                Path(config["server.clock_state_file"]).expanduser().resolve()
+                if config.get("server.clock_state_file")
+                else None
+            )
+            prior = (
+                json.loads(path.read_text(encoding="utf-8")) if path and path.is_file() else None
+            )
+            if not accepted_round(prior):
+                print("SKIPPED: daily regression is disabled on Server", flush=True)
+                return 0
     state_path = required_path(config, "server.clock_state_file")
     state_path.parent.mkdir(parents=True, exist_ok=True)
     with (state_path.parent / (state_path.name + ".lock")).open("a+") as lock:
@@ -259,33 +337,42 @@ def run(config, dry_run=False, check_only=False, interval=30):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("another clock invocation is running")
-        previous = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else None
+        previous = (
+            json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else None
+        )
         plan_path = state_path.with_name(state_path.name + ".plan.json")
         resume = bool(previous and previous.get("phase") == "submitting")
+        if not check_only and not daily_enabled:
+            if not accepted_round(previous):
+                print("SKIPPED: daily regression is disabled on Server", flush=True)
+                return 0
+            print("RESUMING: previously accepted daily round; switch remains disabled", flush=True)
         status = request(config, "query_status", {})
         active = sum(status[key] for key in ("pending", "queued", "assigned", "running"))
         if check_only:
             print("unfinished={} total={}".format(active, status["total"]))
             return 0
-        if active and not resume:
-            print("SKIPPED: {} unfinished tasks".format(active))
-            return 0
+        # Independent daytime/manual work must not suppress the nightly round.
+        # The previous daily groups are checked below instead of all tasks.
         if previous and not resume:
             if previous.get("phase") not in ("complete", "stopped") or previous.get("uncertain"):
                 raise RuntimeError("previous submission uncertain; inspect " + str(state_path))
-            if previous.get('group_ids'):
-                for group_id in previous['group_ids']:
-                    group = request(config, 'query_batch', {'batch_id': group_id})
-                    if not group.get('complete'):
-                        raise RuntimeError('previous daily task is unfinished: ' + group_id)
+            if previous.get("group_ids"):
+                for group_id in previous["group_ids"]:
+                    group = request(config, "query_batch", {"batch_id": group_id})
+                    if not group.get("complete"):
+                        raise RuntimeError("previous daily task is unfinished: " + group_id)
             else:
                 for task_id in previous.get("task_ids", []):
                     task = request(config, "query_task", {"task_id": task_id})
                     if task["status"] not in TERMINAL:
                         raise RuntimeError("previous task is unfinished: {}".format(task_id))
             if previous.get("day") == date.today().isoformat():
-                print("SKIPPED: suite {} today".format(
-                    "stopped" if previous.get("phase") == "stopped" else "already submitted"))
+                print(
+                    "SKIPPED: suite {} today".format(
+                        "stopped" if previous.get("phase") == "stopped" else "already submitted"
+                    )
+                )
                 return 0
         if resume:
             if not plan_path.is_file():
@@ -294,9 +381,14 @@ def run(config, dry_run=False, check_only=False, interval=30):
             state = previous
             revision = state["revision"]
             batch_id = state["batch_id"]
-            if (not isinstance(plan, list) or len(plan) != state["planned"] or
-                    any(entry.get("submission_key") != batch_id + ":" + str(index)
-                        for index, entry in enumerate(plan))):
+            if (
+                not isinstance(plan, list)
+                or len(plan) != state["planned"]
+                or any(
+                    entry.get("submission_key") != batch_id + ":" + str(index)
+                    for index, entry in enumerate(plan)
+                )
+            ):
                 raise RuntimeError("saved clock plan does not match state")
         else:
             revision, archive, plan = build_plan(config)
@@ -311,14 +403,19 @@ def run(config, dry_run=False, check_only=False, interval=30):
             for index, entry in enumerate(plan):
                 entry["submission_key"] = batch_id + ":" + str(index)
             atomic_text(plan_path, json.dumps(plan, sort_keys=True))
-            state = {"day": date.today().isoformat(), "revision": revision,
-                     "archive": str(archive), "batch_id": batch_id, "phase": "submitting",
-                     "task_ids": [], "uncertain": False, "planned": len(plan),
-                     "group_ids": list(groups.values())}
-        protect = required_path(config, "server.protect_versions_file")
-        if config.get('database.path') and config.get('database.backup_enabled', 'true') == 'true':
-            print('[BACKUP] ' + str(backup_database(config)), flush=True)
-        atomic_text(protect, revision + "\n")
+            state = {
+                "day": date.today().isoformat(),
+                "revision": revision,
+                "archive": str(archive),
+                "batch_id": batch_id,
+                "phase": "submitting",
+                "task_ids": [],
+                "uncertain": False,
+                "planned": len(plan),
+                "group_ids": list(groups.values()),
+            }
+        if config.get("database.path") and config.get("database.backup_enabled", "true") == "true":
+            print("[BACKUP] " + str(backup_database(config)), flush=True)
         atomic_text(state_path, json.dumps(state, sort_keys=True))
         # Publish ALL Tasks.yaml entries before the first testcase. An interrupted
         # submit is visible even when some batches have no task records at all.
@@ -327,13 +424,22 @@ def run(config, dry_run=False, check_only=False, interval=30):
             context = entry["payload"]["context"]
             group = context["batch_id"]
             if group not in batches:
-                batches[group] = dict(batch_id=group, template=context["template"],
-                    name=context["name"], revision=entry["revision"], planned=0)
+                batches[group] = dict(
+                    batch_id=group,
+                    template=context["template"],
+                    name=context["name"],
+                    revision=entry["revision"],
+                    planned=0,
+                )
             batches[group]["planned"] += 1
-        manifest = dict(date=state["day"], suite_id=batch_id,
-            plan_sha256=hashlib.sha256(json.dumps(plan, sort_keys=True,
-                separators=(",", ":")).encode("utf-8")).hexdigest(),
-            batches=list(batches.values()))
+        manifest = dict(
+            date=state["day"],
+            suite_id=batch_id,
+            plan_sha256=hashlib.sha256(
+                json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+            batches=list(batches.values()),
+        )
         request(config, "publish_daily_plan", manifest)
         print("BATCH: " + batch_id, flush=True)
         for index in range(state.get("next_index", len(state["task_ids"])), len(plan)):
@@ -352,7 +458,10 @@ def run(config, dry_run=False, check_only=False, interval=30):
                 state.setdefault("stopped_groups", []).append(group_id)
                 state["next_index"] = index + 1
                 atomic_text(state_path, json.dumps(state, sort_keys=True))
-                print("STOPPED: task {}; continuing other Tasks.yaml entries".format(group_id), flush=True)
+                print(
+                    "STOPPED: task {}; continuing other Tasks.yaml entries".format(group_id),
+                    flush=True,
+                )
                 continue
             task_id = answer["task_id"]
             state["task_ids"].append(task_id)
@@ -360,17 +469,33 @@ def run(config, dry_run=False, check_only=False, interval=30):
             state["uncertain"] = False
             atomic_text(state_path, json.dumps(state, sort_keys=True))
             if index == 0 or (index + 1) % 100 == 0 or index + 1 == len(plan):
-                print("[{}/{}] task_id={} template={} case={}".format(
-                    index + 1, len(plan), task_id, entry["payload"]["flow"], entry["payload"]["case"]),
-                    flush=True)
+                print(
+                    "[{}/{}] task_id={} template={} case={}".format(
+                        index + 1,
+                        len(plan),
+                        task_id,
+                        entry["payload"]["flow"],
+                        entry["payload"]["case"],
+                    ),
+                    flush=True,
+                )
             # Tasks.yaml entries are batches. Never sleep between their cases.
             # Keep the historical 30-second pause after each submitted batch.
-            if (index + 1 == len(plan) or
-                    plan[index + 1]["payload"]["context"]["batch_id"] != group_id):
+            if (
+                index + 1 == len(plan)
+                or plan[index + 1]["payload"]["context"]["batch_id"] != group_id
+            ):
                 time.sleep(interval)
+        # Server owns the multi-version list. Persist completion only after it
+        # acknowledges the daily-pin handover; a lost reply is safe to replay.
+        request(config, "publish_daily_plan", dict(manifest, submission_complete=True))
         state["phase"] = "complete"
         atomic_text(state_path, json.dumps(state, sort_keys=True))
-        print("SUBMITTED: {} testcase records at revision {}; stopped task groups={}".format(len(state['task_ids']), revision, len(state.get('stopped_groups', []))))
+        print(
+            "SUBMITTED: {} testcase records at revision {}; stopped task groups={}".format(
+                len(state["task_ids"]), revision, len(state.get("stopped_groups", []))
+            )
+        )
     return 0
 
 
@@ -378,8 +503,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--check-only", action="store_true")
-    parser.add_argument("--interval", type=float, default=30,
-                        help="seconds to pause after each Tasks.yaml batch, not each testcase")
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=30,
+        help="seconds to pause after each Tasks.yaml batch, not each testcase",
+    )
     args = parser.parse_args()
     try:
         config = load_config("server")

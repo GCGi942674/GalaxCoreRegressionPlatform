@@ -8,32 +8,32 @@
 class MetricCounter {
 
 public:
-  MetricCounter() = default;
+    MetricCounter() = default;
 
-  uint64_t load() const;
+    uint64_t load() const;
 
-  void inc(uint64_t n = 1);
-  void add(uint64_t n);
-  void set(uint64_t value);
-  void updateMax(uint64_t value);
+    void inc(uint64_t n = 1);
+    void add(uint64_t n);
+    void set(uint64_t value);
+    void updateMax(uint64_t value);
 
 private:
-  std::atomic<uint64_t> value_{0};
+    std::atomic<uint64_t> value_{0};
 };
 
 class Gauge {
 public:
-  Gauge() = default;
+    Gauge() = default;
 
-  int64_t load() const;
-  void inc(int64_t n = 1);
-  void dec(int64_t n = 1);
-  void add(int64_t n);
-  void sub(int64_t n);
-  void set(int64_t value);
+    int64_t load() const;
+    void inc(int64_t n = 1);
+    void dec(int64_t n = 1);
+    void add(int64_t n);
+    void sub(int64_t n);
+    void set(int64_t value);
 
 private:
-  std::atomic<int64_t> value_{0};
+    std::atomic<int64_t> value_{0};
 };
 
 #endif

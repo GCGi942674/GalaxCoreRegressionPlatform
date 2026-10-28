@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QListWidget>
 #include <QCheckBox>
+#include <QProgressBar>
 #include <memory>
 
 struct GuiSettings {
@@ -24,9 +25,11 @@ struct GuiSettings {
     int timeout{5000}, refreshSeconds{5}, logPageBytes{8192};
     QString target;
 };
+
 class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(GuiSettings settings);
+
 private:
     GuiSettings settings_;
     const bool demo_{false};
@@ -35,6 +38,7 @@ private:
     Json workers_ = Json::array(), tasks_ = Json::array(), catalog_;
     QSet<QString> operations_;
     QStackedWidget* pages_{};
+    QWidget* automationPage_{};
     QLabel* connection_{};
     QLabel *breadcrumb_{}, *navCount_{}, *hostTitle_{}, *flowSummary_{};
     QList<QLabel*> taskMetrics_;
@@ -49,6 +53,14 @@ private:
     QComboBox* machines_{};
     QListWidget* hostsList_{};
     QList<QPushButton*> hostControlButtons_;
+    QList<QPushButton*> hostPolicyButtons_;
+    QLabel* hostPolicySummary_{};
+    QLabel *hostResourceStatus_{}, *hostResourceDecision_{}, *hostResourceExtra_{};
+    QMap<QString, QLabel*> hostResourceValues_, hostResourceDetails_;
+    QMap<QString, QProgressBar*> hostResourceBars_;
+    void showHostResources();
+    void setHostPolicy(const QString& machine, const Json& policy);
+    void editHostPolicy();
     QPushButton* hostRecoveryButton_{};
     bool managementPending_{false};
     QCheckBox* showOffline_{};
@@ -66,13 +78,23 @@ private:
     QLineEdit *batchName_{}, *target_{};
     QComboBox *revision_{}, *flow_{};
     QSpinBox *priority_{}, *timeout_{};
+    QCheckBox* autoTimeout_{};
     QPushButton* submit_{};
-    QDateEdit *dateA_{}, *dateB_{};
+    QComboBox *dateA_{}, *dateB_{};
+    bool dailyDatesReady_{false};
+    bool dailyDatesAutoPending_{false};
+    uint64_t dailyDatesEpoch_{0};
+    QString dailyDatesStage_, dailyDatesBefore_;
+    Json dailyDates_ = Json::array();
     QComboBox *regressionStage_{}, *regressionChange_{};
     QLineEdit* regressionSearch_{};
     QLabel* regressionSummary_{};
     QPushButton* regressionNext_{};
-    Json regressionRows_=Json::array();
+    QLabel *regressionTitle_{}, *regressionSync_{};
+    QMap<QString, QPushButton*> regressionCards_, regressionPills_;
+    QTimer regressionDebounce_;
+    uint64_t regressionRequestEpoch_{0};
+    Json regressionRows_ = Json::array();
     QString regressionCursor_;
     bool regressionLoading_{false};
     uint64_t regressionGeneration_{0};
@@ -88,9 +110,14 @@ private:
     QWidget* addPage();
     QWidget* regressionPage();
     void refresh();
-    void fetchList(const std::string& type, const Json& filter, const Json& cursor,
-                   std::shared_ptr<Json> rows, std::string instance,
-                   std::function<void(bool,Json,QString)> done, int page = 0, uint64_t generation = 0);
+    void fetchList(const std::string& type,
+        const Json& filter,
+        const Json& cursor,
+        std::shared_ptr<Json> rows,
+        std::string instance,
+        std::function<void(bool, Json, QString)> done,
+        int page = 0,
+        uint64_t generation = 0);
     void showWorkers();
     void controlWorkers(bool machine, const QString& target, const QString& action);
     void recoverOfflineWorkers(bool machine, const QString& target);
@@ -98,8 +125,11 @@ private:
     void filterTasks();
     void loadCatalog();
     void applyCatalog();
-    void loadServerCatalog(uint64_t offset=0, uint64_t generation=0,
-                           std::shared_ptr<Json> result=nullptr, std::string instance={}, bool force=false);
+    void loadServerCatalog(uint64_t offset = 0,
+        uint64_t generation = 0,
+        std::shared_ptr<Json> result = nullptr,
+        std::string instance = {},
+        bool force = false);
     void resetFlowOptions();
     void filterCases();
     Json selectedFlowConfig() const;
@@ -108,12 +138,18 @@ private:
     void cancelSelection();
     void openTask(uint64_t id);
     void openBatch(const QString& batch);
-    void openBatchRows(const QString& batch,const Json& records);
+    void openBatchRows(const QString& batch, const Json& records);
     void rerunFailures(const Json& rows);
-    void loadRerun(std::shared_ptr<Json> ids,size_t index);
+    void loadRerun(std::shared_ptr<Json> ids, size_t index);
+    void confirmRerun();
     void showDailyPlan();
+    void openAutomation();
     void openLogs(const Json& task);
-    void queryDaily(bool next=false);
+    void queryDaily(bool next = false);
+    void loadDailyDates(bool reset = true);
+    void scheduleDailyQuery();
+    void selectDailyChange(const QString& change);
+    void openDailyEvidence(const Json& row, const QString& baseline, const QString& comparison);
     void note(const QString& text, bool error = false);
     void updateFreshness();
     void invalidateSnapshots(bool workers, bool tasks);

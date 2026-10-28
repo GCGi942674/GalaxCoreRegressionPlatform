@@ -10,20 +10,20 @@ class EventLoopThread;
 
 class EventLoopThreadPool {
 public:
-  explicit EventLoopThreadPool(size_t thread_num);
-  ~EventLoopThreadPool();
+    explicit EventLoopThreadPool(size_t thread_num);
+    ~EventLoopThreadPool();
 
-  void start();
-  EventLoop *getNextLoop();
-  void stop();
+    void start();
+    EventLoop* getNextLoop();
+    void stop();
 
 private:
-  size_t thread_num_;
-  size_t next_;
-  bool started_;
+    size_t thread_num_;
+    size_t next_;
+    bool started_;
 
-  std::vector<std::unique_ptr<EventLoopThread>> threads_;
-  std::vector<EventLoop *> loops_;
+    std::vector<std::unique_ptr<EventLoopThread>> threads_;
+    std::vector<EventLoop*> loops_;
 };
 
 #endif // EVENTLOOPTHREADPOOL_H_

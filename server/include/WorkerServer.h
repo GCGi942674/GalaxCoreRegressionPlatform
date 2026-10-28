@@ -19,6 +19,7 @@
 #include "worker/WorkerSession.h"
 #include "ConnectionSession.h"
 #include "persistence/StateStore.h"
+#include "scheduler/AutomationService.h"
 
 namespace GCRP {
 
@@ -31,11 +32,25 @@ public:
     void attach(EchoServer& transport);
     SchedulingResult runOnce();
 
-    WorkerManager& getWorkerManager() { return *worker_manager_ptr_; }
-    WorkerConnectionRegistry& getWorkerConnectionRegistry() { return *registry_ptr_; }
-    Scheduler& getScheduler() { return *scheduler_ptr_; }
-    TaskService& getTaskService() { return *task_service_ptr_; }
-    Protocol::ProtocolRouter& getRouter() { return *router_ptr_; }
+    WorkerManager& getWorkerManager() {
+        return *worker_manager_ptr_;
+    }
+
+    WorkerConnectionRegistry& getWorkerConnectionRegistry() {
+        return *registry_ptr_;
+    }
+
+    Scheduler& getScheduler() {
+        return *scheduler_ptr_;
+    }
+
+    TaskService& getTaskService() {
+        return *task_service_ptr_;
+    }
+
+    Protocol::ProtocolRouter& getRouter() {
+        return *router_ptr_;
+    }
 
 private:
     std::unique_ptr<StateStore> store_ptr_;
@@ -46,6 +61,7 @@ private:
     std::unique_ptr<SchedulingCoordinator> coordinator_ptr_;
     std::unique_ptr<SchedulingDriver> scheduling_driver_ptr_;
     std::unique_ptr<TaskService> task_service_ptr_;
+    std::unique_ptr<AutomationService> automation_ptr_;
     std::unique_ptr<Protocol::ProtocolRouter> router_ptr_;
     std::mutex session_mutex_;
     std::unordered_map<Connection*, std::unique_ptr<ConnectionSession>> sessions_;
@@ -58,6 +74,11 @@ private:
     std::condition_variable log_cv_;
     std::deque<std::function<void()>> log_jobs_;
     bool log_stopping_{false};
+    std::vector<std::thread> query_threads_;
+    std::mutex query_mutex_;
+    std::condition_variable query_cv_;
+    std::deque<std::function<void()>> query_jobs_;
+    bool query_stopping_{false};
 };
 
 } // namespace GCRP

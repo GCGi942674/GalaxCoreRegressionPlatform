@@ -21,14 +21,16 @@ bool Config::loadDefault() {
         return *path && load(path);
     std::error_code error;
     auto directory = std::filesystem::current_path(error);
-    if (error) return false;
+    if (error)
+        return false;
     while (true) {
         for (const char* name : {"server.conf", "gcrp.conf"}) {
             const auto candidate = directory / "config" / name;
             if (std::filesystem::is_regular_file(candidate, error))
                 return load(candidate.string());
         }
-        if (directory == directory.root_path()) break;
+        if (directory == directory.root_path())
+            break;
         directory = directory.parent_path();
     }
     return false;
@@ -62,7 +64,8 @@ bool Config::load(const std::string& filename) {
         // Find key=value
         size_t pos = trimmed.find('=');
         if (pos == std::string::npos) {
-            std::cerr << "[CONFIG] Warning: Malformed line " << line_num << " in " << filename << ": " << line << std::endl;
+            std::cerr << "[CONFIG] Warning: Malformed line " << line_num << " in " << filename
+                      << ": " << line << std::endl;
             continue;
         }
 
@@ -70,7 +73,8 @@ bool Config::load(const std::string& filename) {
         std::string value = trim(trimmed.substr(pos + 1));
 
         if (key.empty()) {
-            std::cerr << "[CONFIG] Warning: Empty key on line " << line_num << " in " << filename << std::endl;
+            std::cerr << "[CONFIG] Warning: Empty key on line " << line_num << " in " << filename
+                      << std::endl;
             continue;
         }
 
@@ -102,7 +106,8 @@ int Config::getInt(const std::string& key, int default_value) const {
         try {
             size_t consumed = 0;
             int value = std::stoi(it->second, &consumed);
-            if (consumed != it->second.size()) throw std::invalid_argument("trailing characters");
+            if (consumed != it->second.size())
+                throw std::invalid_argument("trailing characters");
             return value;
         } catch (const std::exception& e) {
             std::cerr << "[CONFIG] Warning: Invalid integer value for key '" << key
@@ -116,8 +121,9 @@ bool Config::getBool(const std::string& key, bool default_value) const {
     auto it = config_map_.find(key);
     if (it != config_map_.end()) {
         std::string value = it->second;
-        std::transform(value.begin(), value.end(), value.begin(),
-            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
 
         if (value == "true" || value == "yes" || value == "on" || value == "1") {
             return true;

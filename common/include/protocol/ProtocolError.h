@@ -19,7 +19,9 @@ struct ProtocolError {
     ProtocolErrorCode code{ProtocolErrorCode::NONE};
     std::string message;
 
-    bool hasError() const { return code != ProtocolErrorCode::NONE; }
+    bool hasError() const {
+        return code != ProtocolErrorCode::NONE;
+    }
 };
 
 } // namespace GCRP::Protocol

@@ -6,23 +6,35 @@ namespace GCRP {
 
 std::string toString(TaskStatus status) {
     switch (status) {
-        case TaskStatus::PENDING:   return "PENDING";
-        case TaskStatus::QUEUED:    return "QUEUED";
-        case TaskStatus::ASSIGNED:  return "ASSIGNED";
-        case TaskStatus::RUNNING:   return "RUNNING";
-        case TaskStatus::SUCCEEDED: return "SUCCEEDED";
-        case TaskStatus::FAILED:    return "FAILED";
-        case TaskStatus::TIMEOUT:   return "TIMEOUT";
-        case TaskStatus::CANCELLED: return "CANCELLED";
-        default: return "UNKNOWN";
+        case TaskStatus::PENDING:
+            return "PENDING";
+        case TaskStatus::QUEUED:
+            return "QUEUED";
+        case TaskStatus::ASSIGNED:
+            return "ASSIGNED";
+        case TaskStatus::RUNNING:
+            return "RUNNING";
+        case TaskStatus::SUCCEEDED:
+            return "SUCCEEDED";
+        case TaskStatus::FAILED:
+            return "FAILED";
+        case TaskStatus::TIMEOUT:
+            return "TIMEOUT";
+        case TaskStatus::CANCELLED:
+            return "CANCELLED";
+        default:
+            return "UNKNOWN";
     }
 }
 
 std::string toString(TaskType type) {
     switch (type) {
-        case TaskType::REGRESSION: return "REGRESSION";
-        case TaskType::UNKNOWN:    return "UNKNOWN";
-        default: return "UNKNOWN";
+        case TaskType::REGRESSION:
+            return "REGRESSION";
+        case TaskType::UNKNOWN:
+            return "UNKNOWN";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -37,16 +49,20 @@ Task::Task(TaskId id, TaskType type, const std::string& target, const std::strin
     , retry_count_(0)
     , created_at_(std::chrono::system_clock::now())
     , started_at_()
-    , finished_at_()
-{
+    , finished_at_() {
 }
 
-void Task::restore(TaskStatus status, std::string worker_id, int retry_count,
-                   nlohmann::json payload, nlohmann::json execution,
-                   uint64_t queue_sequence, std::string run_id, bool recovery_required,
-                   std::chrono::system_clock::time_point created,
-                   std::chrono::system_clock::time_point started,
-                   std::chrono::system_clock::time_point finished) {
+void Task::restore(TaskStatus status,
+    std::string worker_id,
+    int retry_count,
+    nlohmann::json payload,
+    nlohmann::json execution,
+    uint64_t queue_sequence,
+    std::string run_id,
+    bool recovery_required,
+    std::chrono::system_clock::time_point created,
+    std::chrono::system_clock::time_point started,
+    std::chrono::system_clock::time_point finished) {
     status_ = status;
     worker_id_ = std::move(worker_id);
     retry_count_ = retry_count;
@@ -69,15 +85,12 @@ bool Task::canTransitionTo(TaskStatus next) const {
             return next == TaskStatus::ASSIGNED || next == TaskStatus::CANCELLED;
 
         case TaskStatus::ASSIGNED:
-            return next == TaskStatus::RUNNING ||
-                   next == TaskStatus::QUEUED ||
+            return next == TaskStatus::RUNNING || next == TaskStatus::QUEUED ||
                    next == TaskStatus::CANCELLED;
 
         case TaskStatus::RUNNING:
-            return next == TaskStatus::SUCCEEDED ||
-                   next == TaskStatus::FAILED ||
-                   next == TaskStatus::TIMEOUT ||
-                   next == TaskStatus::CANCELLED;
+            return next == TaskStatus::SUCCEEDED || next == TaskStatus::FAILED ||
+                   next == TaskStatus::TIMEOUT || next == TaskStatus::CANCELLED;
 
         case TaskStatus::SUCCEEDED:
         case TaskStatus::FAILED:
@@ -101,10 +114,8 @@ bool Task::transitionTo(TaskStatus next) {
         started_at_ = std::chrono::system_clock::now();
     }
 
-    if ((next == TaskStatus::SUCCEEDED ||
-         next == TaskStatus::FAILED ||
-         next == TaskStatus::TIMEOUT ||
-         next == TaskStatus::CANCELLED) &&
+    if ((next == TaskStatus::SUCCEEDED || next == TaskStatus::FAILED ||
+            next == TaskStatus::TIMEOUT || next == TaskStatus::CANCELLED) &&
         finished_at_.time_since_epoch().count() == 0) {
         finished_at_ = std::chrono::system_clock::now();
     }

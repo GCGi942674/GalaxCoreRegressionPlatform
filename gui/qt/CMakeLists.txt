@@ -1,19 +1,32 @@
 cmake_minimum_required(VERSION 3.15.2)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  project(GalaxCoreRegressionPlatformGui LANGUAGES CXX)
-  set(CMAKE_CXX_STANDARD 17)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    project(GalaxCoreRegressionPlatformGui LANGUAGES CXX)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 find_package(Qt5 5.8 REQUIRED COMPONENTS Core Widgets Network)
 add_library(gcrp_qt_transport STATIC src/RpcClient.cpp)
-target_include_directories(gcrp_qt_transport PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party)
+target_include_directories(gcrp_qt_transport
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party
+)
 target_link_libraries(gcrp_qt_transport PUBLIC Qt5::Core Qt5::Network)
-add_executable(gcrp_gui src/main.cpp src/MainWindow.cpp src/ConsolePages.cpp
-  src/TaskViews.cpp src/WorkerViews.cpp src/DailyView.cpp)
+add_executable(gcrp_gui
+    src/main.cpp
+    src/MainWindow.cpp
+    src/ConsolePages.cpp
+    src/TaskViews.cpp
+    src/WorkerViews.cpp
+    src/HostResourcesView.cpp
+    src/DailyView.cpp
+    src/DailyComparison.cpp
+    src/DailyEvidence.cpp
+    src/PlanCenter.cpp
+)
 target_link_libraries(gcrp_gui PRIVATE gcrp_qt_transport Qt5::Widgets)
 if(MSVC)
-  target_compile_options(gcrp_gui PRIVATE /utf-8)
+    target_compile_options(gcrp_gui PRIVATE /utf-8)
 endif()

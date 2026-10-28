@@ -18,13 +18,18 @@ add_library(gcrp_server_core STATIC
     src/ProgressService.cpp
     src/RunLogArchive.cpp
     src/Scheduler.cpp
+    src/ArtifactProtection.cpp
     src/SchedulingCoordinator.cpp
     src/SchedulingDriver.cpp
     src/TaskIdGenerator.cpp
     src/TaskService.cpp
     src/StateStore.cpp
+    src/RuntimeStore.cpp
+    src/TimeoutPolicy.cpp
     src/WorkerConnectionRegistry.cpp
     src/WorkerManager.cpp
+    src/MachineRunPolicy.cpp
+    src/AutomationService.cpp
     src/WorkerServer.cpp
     src/WorkerSession.cpp
     src/WorkerSessionHandler.cpp

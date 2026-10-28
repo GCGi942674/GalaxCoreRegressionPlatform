@@ -103,148 +103,302 @@ QScrollBar::add-page,QScrollBar::sub-page { background:transparent; }
 QToolTip { background:#233b5a; color:white; border:0; padding:8px; }
 )QSS");
 }
+
 class NumberedLog : public QPlainTextEdit {
     class Gutter : public QWidget {
     public:
-        explicit Gutter(NumberedLog* owner):QWidget(owner),owner_(owner){}
-        void paintEvent(QPaintEvent* event) override { owner_->paintNumbers(event); }
+        explicit Gutter(NumberedLog* owner)
+            : QWidget(owner)
+            , owner_(owner) {
+        }
+
+        void paintEvent(QPaintEvent* event) override {
+            owner_->paintNumbers(event);
+        }
+
     private:
         NumberedLog* owner_;
     };
+
 public:
-    explicit NumberedLog(QWidget* parent=nullptr):QPlainTextEdit(parent),gutter_(new Gutter(this)) {
-        connect(this,&QPlainTextEdit::blockCountChanged,this,[this]{updateMargin();});
-        connect(this,&QPlainTextEdit::updateRequest,this,[this](const QRect& rect,int dy){if(dy)gutter_->scroll(0,dy);else gutter_->update(0,rect.y(),gutter_->width(),rect.height());});
+    explicit NumberedLog(QWidget* parent = nullptr)
+        : QPlainTextEdit(parent)
+        , gutter_(new Gutter(this)) {
+        connect(this, &QPlainTextEdit::blockCountChanged, this, [this] {
+            updateMargin();
+        });
+        connect(this, &QPlainTextEdit::updateRequest, this, [this](const QRect& rect, int dy) {
+            if (dy)
+                gutter_->scroll(0, dy);
+            else
+                gutter_->update(0, rect.y(), gutter_->width(), rect.height());
+        });
         updateMargin();
     }
+
 protected:
     void resizeEvent(QResizeEvent* event) override {
-        QPlainTextEdit::resizeEvent(event);gutter_->setGeometry(contentsRect().left(),contentsRect().top(),gutterWidth(),contentsRect().height());
+        QPlainTextEdit::resizeEvent(event);
+        gutter_->setGeometry(
+            contentsRect().left(), contentsRect().top(), gutterWidth(), contentsRect().height());
     }
+
 private:
     int gutterWidth() const {
-#if QT_VERSION >= QT_VERSION_CHECK(5,11,0)
-        const int digit=fontMetrics().horizontalAdvance(QLatin1Char('9'));
+#if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+        const int digit = fontMetrics().horizontalAdvance(QLatin1Char('9'));
 #else
-        const int digit=fontMetrics().width(QLatin1Char('9'));
+        const int digit = fontMetrics().width(QLatin1Char('9'));
 #endif
-        return 18+digit*QString::number(qMax(1,blockCount())).size();
+        return 18 + digit * QString::number(qMax(1, blockCount())).size();
     }
-    void updateMargin() { setViewportMargins(gutterWidth(),0,0,0);gutter_->setGeometry(contentsRect().left(),contentsRect().top(),gutterWidth(),contentsRect().height()); }
+
+    void updateMargin() {
+        setViewportMargins(gutterWidth(), 0, 0, 0);
+        gutter_->setGeometry(
+            contentsRect().left(), contentsRect().top(), gutterWidth(), contentsRect().height());
+    }
+
     void paintNumbers(QPaintEvent* event) {
-        QPainter painter(gutter_);painter.fillRect(event->rect(),QColor("#15243a"));painter.setPen(QColor("#7e96b7"));painter.setFont(font());
-        auto block=firstVisibleBlock();int number=block.blockNumber();int top=qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
-        while(block.isValid()&&top<=event->rect().bottom()){
-            const int height=qRound(blockBoundingRect(block).height());if(block.isVisible()&&top+height>=event->rect().top())painter.drawText(0,top,gutter_->width()-8,fontMetrics().height(),Qt::AlignRight,QString::number(number+1));
-            top+=height;block=block.next();++number;
+        QPainter painter(gutter_);
+        painter.fillRect(event->rect(), QColor("#15243a"));
+        painter.setPen(QColor("#7e96b7"));
+        painter.setFont(font());
+        auto block = firstVisibleBlock();
+        int number = block.blockNumber();
+        int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+        while (block.isValid() && top <= event->rect().bottom()) {
+            const int height = qRound(blockBoundingRect(block).height());
+            if (block.isVisible() && top + height >= event->rect().top())
+                painter.drawText(0,
+                    top,
+                    gutter_->width() - 8,
+                    fontMetrics().height(),
+                    Qt::AlignRight,
+                    QString::number(number + 1));
+            top += height;
+            block = block.next();
+            ++number;
         }
     }
+
     Gutter* gutter_;
 };
-inline void toast(QWidget* root,const QString& text,bool error) {
-    auto label=new QLabel(root);label->setObjectName("toast");label->setTextFormat(Qt::PlainText);label->setWordWrap(true);label->setText(text);
-    if(error)label->setStyleSheet("border-left-color:#c14450;");
-    label->setFixedWidth(420);label->adjustSize();const auto target=QRect(root->width()-label->width()-24,root->height()-label->height()-24,label->width(),label->height());
-    label->setGeometry(target.translated(0,6));label->show();label->raise();
-    auto move=new QPropertyAnimation(label,"geometry",label);move->setDuration(160);move->setStartValue(label->geometry());move->setEndValue(target);move->setEasingCurve(QEasingCurve::OutCubic);move->start(QAbstractAnimation::DeleteWhenStopped);
-    QTimer::singleShot(4500,label,&QObject::deleteLater);
+
+inline void toast(QWidget* root, const QString& text, bool error) {
+    auto label = new QLabel(root);
+    label->setObjectName("toast");
+    label->setTextFormat(Qt::PlainText);
+    label->setWordWrap(true);
+    label->setText(text);
+    if (error)
+        label->setStyleSheet("border-left-color:#c14450;");
+    label->setFixedWidth(420);
+    label->adjustSize();
+    const auto target = QRect(root->width() - label->width() - 24,
+        root->height() - label->height() - 24,
+        label->width(),
+        label->height());
+    label->setGeometry(target.translated(0, 6));
+    label->show();
+    label->raise();
+    auto move = new QPropertyAnimation(label, "geometry", label);
+    move->setDuration(160);
+    move->setStartValue(label->geometry());
+    move->setEndValue(target);
+    move->setEasingCurve(QEasingCurve::OutCubic);
+    move->start(QAbstractAnimation::DeleteWhenStopped);
+    QTimer::singleShot(4500, label, &QObject::deleteLater);
 }
+
 inline QWidget* badge(const QString& value) {
-    auto holder=new QWidget;auto row=new QHBoxLayout(holder);row->setContentsMargins(6,4,6,4);
-    auto label=new QLabel(value);label->setObjectName("statusBadge");label->setSizePolicy(QSizePolicy::Maximum,QSizePolicy::Fixed);label->setMinimumWidth(35);
-    label->setProperty("tone",value=="PASS"||value=="ONLINE"?"green":value=="FAIL"||value=="FAILED"?"red":value=="RUNNING"?"blue":value=="TIMEOUT"?"amber":"neutral");
-    row->addWidget(label);row->addStretch();return holder;
+    auto holder = new QWidget;
+    auto row = new QHBoxLayout(holder);
+    row->setContentsMargins(6, 4, 6, 4);
+    auto label = new QLabel(value);
+    label->setObjectName("statusBadge");
+    label->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    label->setMinimumWidth(35);
+    label->setProperty("tone",
+        value == "PASS" || value == "ONLINE"   ? "green"
+        : value == "FAIL" || value == "FAILED" ? "red"
+        : value == "RUNNING"                   ? "blue"
+        : value == "TIMEOUT"                   ? "amber"
+                                               : "neutral");
+    row->addWidget(label);
+    row->addStretch();
+    return holder;
 }
+
 // Paint-only click feedback: does not move controls or block real RPC actions.
 class ClickPulse : public QWidget {
 public:
-    explicit ClickPulse(QWidget* parent) : QWidget(parent) {
-        setAttribute(Qt::WA_TransparentForMouseEvents);setAttribute(Qt::WA_NoSystemBackground);
-        setGeometry(parent->rect());show();raise();
-        auto animation=new QVariantAnimation(this);animation->setDuration(180);
-        animation->setStartValue(0.0);animation->setEndValue(1.0);
-        connect(animation,&QVariantAnimation::valueChanged,this,[this](const QVariant& value){progress_=value.toReal();update();});
-        connect(animation,&QVariantAnimation::finished,this,&QObject::deleteLater);animation->start();
+    explicit ClickPulse(QWidget* parent)
+        : QWidget(parent) {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        setGeometry(parent->rect());
+        show();
+        raise();
+        auto animation = new QVariantAnimation(this);
+        animation->setDuration(180);
+        animation->setStartValue(0.0);
+        animation->setEndValue(1.0);
+        connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+            progress_ = value.toReal();
+            update();
+        });
+        connect(animation, &QVariantAnimation::finished, this, &QObject::deleteLater);
+        animation->start();
     }
+
 protected:
     void paintEvent(QPaintEvent*) override {
-        QPainter p(this);p.setRenderHint(QPainter::Antialiasing);p.setPen(Qt::NoPen);
-        p.setBrush(QColor(36,95,193,int(32*(1-progress_))));p.drawRoundedRect(rect().adjusted(1,1,-1,-1),6,6);
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(36, 95, 193, int(32 * (1 - progress_))));
+        p.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 6, 6);
     }
+
 private:
     qreal progress_{0};
 };
+
 class InteractionFeedback : public QObject {
 public:
-    explicit InteractionFeedback(QWidget* root):QObject(root),root_(root){qApp->installEventFilter(this);}
+    explicit InteractionFeedback(QWidget* root)
+        : QObject(root)
+        , root_(root) {
+        qApp->installEventFilter(this);
+    }
+
 protected:
-    bool eventFilter(QObject* target,QEvent* event) override {
-        if(event->type()==QEvent::Show&&root_&&qApp->platformName()!="offscreen"&&qgetenv("GCRP_REDUCED_MOTION")!="1"){
-            auto dialog=qobject_cast<QDialog*>(target);
-            if(dialog&&root_->isAncestorOf(dialog)){auto fade=new QPropertyAnimation(dialog,"windowOpacity",dialog);fade->setDuration(160);fade->setStartValue(0.0);fade->setEndValue(1.0);fade->start(QAbstractAnimation::DeleteWhenStopped);}
+    bool eventFilter(QObject* target, QEvent* event) override {
+        if (event->type() == QEvent::Show && root_ && qApp->platformName() != "offscreen" &&
+            qgetenv("GCRP_REDUCED_MOTION") != "1") {
+            auto dialog = qobject_cast<QDialog*>(target);
+            if (dialog && root_->isAncestorOf(dialog)) {
+                auto fade = new QPropertyAnimation(dialog, "windowOpacity", dialog);
+                fade->setDuration(160);
+                fade->setStartValue(0.0);
+                fade->setEndValue(1.0);
+                fade->start(QAbstractAnimation::DeleteWhenStopped);
+            }
         }
-        auto button=qobject_cast<QPushButton*>(target);
-        if(button&&root_&&root_->isAncestorOf(button)&&button->isEnabled()&&qgetenv("GCRP_REDUCED_MOTION")!="1"&&event->type()==QEvent::MouseButtonRelease){
-            auto mouse=static_cast<QMouseEvent*>(event);
-            if(mouse->button()==Qt::LeftButton&&button->rect().contains(mouse->pos()))new ClickPulse(button);
+        auto button = qobject_cast<QPushButton*>(target);
+        if (button && root_ && root_->isAncestorOf(button) && button->isEnabled() &&
+            qgetenv("GCRP_REDUCED_MOTION") != "1" && event->type() == QEvent::MouseButtonRelease) {
+            auto mouse = static_cast<QMouseEvent*>(event);
+            if (mouse->button() == Qt::LeftButton && button->rect().contains(mouse->pos()))
+                new ClickPulse(button);
         }
         return false;
     }
+
 private:
     QPointer<QWidget> root_;
 };
+
 inline QWidget* card(QWidget* content) {
-    auto panel = new QFrame; panel->setObjectName("contentCard");
-    auto layout = new QVBoxLayout(panel); layout->setContentsMargins(10,10,10,10);
+    auto panel = new QFrame;
+    panel->setObjectName("contentCard");
+    auto layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(10, 10, 10, 10);
     layout->addWidget(content);
     return panel;
 }
+
 // Fade a captured old page above the new page. Applying opacity to the entire
 // stack nests effects around the cards' shadows and breaks Qt5 raster painting.
 class PageTransition : public QObject {
 public:
-    PageTransition(QStackedWidget* pages, QObject* owner) : QObject(owner), pages_(pages) {
-        overlay_ = new QLabel(pages); overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    PageTransition(QStackedWidget* pages, QObject* owner)
+        : QObject(owner)
+        , pages_(pages) {
+        overlay_ = new QLabel(pages);
+        overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
         overlay_->hide();
-        opacity_ = new QGraphicsOpacityEffect(overlay_); overlay_->setGraphicsEffect(opacity_);
-        animation_ = new QPropertyAnimation(opacity_,"opacity",this);
-        animation_->setDuration(180); animation_->setStartValue(1.0); animation_->setEndValue(0.0);
+        opacity_ = new QGraphicsOpacityEffect(overlay_);
+        overlay_->setGraphicsEffect(opacity_);
+        animation_ = new QPropertyAnimation(opacity_, "opacity", this);
+        animation_->setDuration(180);
+        animation_->setStartValue(1.0);
+        animation_->setEndValue(0.0);
         animation_->setEasingCurve(QEasingCurve::OutCubic);
-        connect(animation_,&QPropertyAnimation::finished,this,[this]{overlay_->hide();});
+        connect(animation_, &QPropertyAnimation::finished, this, [this] {
+            overlay_->hide();
+        });
     }
+
     void capture() {
-        animation_->stop(); overlay_->hide();
-        overlay_->setPixmap(pages_->grab()); overlay_->setGeometry(pages_->rect());
+        animation_->stop();
+        overlay_->hide();
+        overlay_->setPixmap(pages_->grab());
+        overlay_->setGeometry(pages_->rect());
     }
-    void start() { if(qgetenv("GCRP_REDUCED_MOTION")=="1")return;overlay_->show(); overlay_->raise(); opacity_->setOpacity(1.0); animation_->start(); }
+
+    void start() {
+        if (qgetenv("GCRP_REDUCED_MOTION") == "1")
+            return;
+        overlay_->show();
+        overlay_->raise();
+        opacity_->setOpacity(1.0);
+        animation_->start();
+    }
+
 private:
     QStackedWidget* pages_;
     QLabel* overlay_;
     QGraphicsOpacityEffect* opacity_;
     QPropertyAnimation* animation_;
 };
+
 inline PageTransition* pageTransition(QStackedWidget* pages, QObject* owner) {
-    return new PageTransition(pages,owner);
+    return new PageTransition(pages, owner);
 }
+
 inline QIcon navigationIcon(int page) {
-    QPixmap pixmap(40,40); pixmap.fill(Qt::transparent);
-    QPainter painter(&pixmap); painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(QColor("#527caf"),2.2,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
-    if(page==0) {
-        painter.drawRoundedRect(QRectF(6,7,28,11),3,3); painter.drawRoundedRect(QRectF(6,23,28,11),3,3);
-        painter.drawPoint(QPointF(11,12)); painter.drawPoint(QPointF(11,28));
-        painter.drawLine(QPointF(24,12),QPointF(29,12)); painter.drawLine(QPointF(24,28),QPointF(29,28));
-    } else if(page==1) {
-        for(int y:{10,20,30}){painter.drawRoundedRect(QRectF(6,y-3,6,6),1,1);painter.drawLine(QPointF(18,y),QPointF(33,y));}
-    } else if(page==2) {
-        painter.drawRoundedRect(QRectF(5,11,30,23),3,3); painter.drawLine(QPointF(7,11),QPointF(7,6));
-        painter.drawLine(QPointF(7,6),QPointF(17,6)); painter.drawLine(QPointF(17,6),QPointF(22,11));
-        painter.drawLine(QPointF(20,17),QPointF(20,28)); painter.drawLine(QPointF(15,22),QPointF(25,22));
+    QPixmap pixmap(40, 40);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#527caf"), 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    if (page == 0) {
+        painter.drawRoundedRect(QRectF(6, 7, 28, 11), 3, 3);
+        painter.drawRoundedRect(QRectF(6, 23, 28, 11), 3, 3);
+        painter.drawPoint(QPointF(11, 12));
+        painter.drawPoint(QPointF(11, 28));
+        painter.drawLine(QPointF(24, 12), QPointF(29, 12));
+        painter.drawLine(QPointF(24, 28), QPointF(29, 28));
+    } else if (page == 1) {
+        for (int y : {10, 20, 30}) {
+            painter.drawRoundedRect(QRectF(6, y - 3, 6, 6), 1, 1);
+            painter.drawLine(QPointF(18, y), QPointF(33, y));
+        }
+    } else if (page == 2) {
+        painter.drawRoundedRect(QRectF(5, 11, 30, 23), 3, 3);
+        painter.drawLine(QPointF(7, 11), QPointF(7, 6));
+        painter.drawLine(QPointF(7, 6), QPointF(17, 6));
+        painter.drawLine(QPointF(17, 6), QPointF(22, 11));
+        painter.drawLine(QPointF(20, 17), QPointF(20, 28));
+        painter.drawLine(QPointF(15, 22), QPointF(25, 22));
+    } else if (page == 4) {
+        painter.drawRect(QRectF(7, 7, 26, 26));
+        for (int position : {14, 20, 26}) {
+            painter.drawLine(QPointF(position, 7), QPointF(position, 33));
+            painter.drawLine(QPointF(7, position), QPointF(33, position));
+        }
     } else {
-        painter.drawLine(QPointF(11,7),QPointF(11,33)); painter.drawLine(QPointF(29,7),QPointF(29,33));
-        painter.drawLine(QPointF(11,14),QPointF(29,25)); painter.drawEllipse(QPointF(11,7),3,3);
-        painter.drawEllipse(QPointF(11,33),3,3); painter.drawEllipse(QPointF(29,7),3,3); painter.drawEllipse(QPointF(29,33),3,3);
+        painter.drawLine(QPointF(11, 7), QPointF(11, 33));
+        painter.drawLine(QPointF(29, 7), QPointF(29, 33));
+        painter.drawLine(QPointF(11, 14), QPointF(29, 25));
+        painter.drawEllipse(QPointF(11, 7), 3, 3);
+        painter.drawEllipse(QPointF(11, 33), 3, 3);
+        painter.drawEllipse(QPointF(29, 7), 3, 3);
+        painter.drawEllipse(QPointF(29, 33), 3, 3);
     }
-    painter.end();return QIcon(pixmap);
+    painter.end();
+    return QIcon(pixmap);
 }
-}
+} // namespace GcrpUi

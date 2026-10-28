@@ -16,10 +16,7 @@ std::string ProtocolCodec::messageTypeToString(MessageType type) {
 }
 
 bool ProtocolCodec::validateEnvelope(
-    const nlohmann::json& j,
-    ProtocolMessage& message,
-    ProtocolError& error
-) {
+    const nlohmann::json& j, ProtocolMessage& message, ProtocolError& error) {
     // Validate version
     if (!j.contains("version")) {
         error.code = ProtocolErrorCode::MISSING_FIELD;
@@ -95,10 +92,7 @@ bool ProtocolCodec::validateEnvelope(
 }
 
 bool ProtocolCodec::decode(
-    const std::string& json_text,
-    ProtocolMessage& message,
-    ProtocolError& error
-) {
+    const std::string& json_text, ProtocolMessage& message, ProtocolError& error) {
     error.code = ProtocolErrorCode::NONE;
     error.message.clear();
 
@@ -116,7 +110,9 @@ bool ProtocolCodec::decode(
     } catch (const nlohmann::json::exception& e) {
         error.code = ProtocolErrorCode::INVALID_JSON;
         error.message = "JSON parse error: " + std::string(e.what());
-        LOG_WARN(LogModule::NETWORK, "JSON parse error for request_id " + std::to_string(message.request_id) + ": " + error.message);
+        LOG_WARN(LogModule::NETWORK,
+            "JSON parse error for request_id " + std::to_string(message.request_id) + ": " +
+                error.message);
         return false;
     } catch (const std::exception& e) {
         error.code = ProtocolErrorCode::INVALID_JSON;
@@ -127,10 +123,7 @@ bool ProtocolCodec::decode(
 }
 
 bool ProtocolCodec::encode(
-    const ProtocolMessage& message,
-    std::string& json_text,
-    ProtocolError& error
-) {
+    const ProtocolMessage& message, std::string& json_text, ProtocolError& error) {
     error.code = ProtocolErrorCode::NONE;
     error.message.clear();
 

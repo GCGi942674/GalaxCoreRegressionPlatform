@@ -3,11 +3,12 @@
 #include <utility>
 #include <type_traits>
 
-template <typename F>
-class ScopeGuard {
+template <typename F> class ScopeGuard {
 public:
     explicit ScopeGuard(F&& f) noexcept
-        : func_(std::forward<F>(f)), active_(true) {}
+        : func_(std::forward<F>(f))
+        , active_(true) {
+    }
 
     ~ScopeGuard() noexcept {
         if (active_) {
@@ -19,7 +20,8 @@ public:
     ScopeGuard& operator=(const ScopeGuard&) = delete;
 
     ScopeGuard(ScopeGuard&& other) noexcept
-        : func_(std::move(other.func_)), active_(other.active_) {
+        : func_(std::move(other.func_))
+        , active_(other.active_) {
         other.active_ = false;
     }
 
@@ -34,7 +36,6 @@ private:
     bool active_;
 };
 
-template <typename F>
-auto finally(F&& f) {
+template <typename F> auto finally(F&& f) {
     return ScopeGuard<std::decay_t<F>>(std::forward<F>(f));
 }

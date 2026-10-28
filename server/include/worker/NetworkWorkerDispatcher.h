@@ -15,16 +15,11 @@ namespace GCRP {
 class NetworkWorkerDispatcher : public WorkerDispatcher {
 public:
     explicit NetworkWorkerDispatcher(
-        WorkerConnectionRegistry& registry,
-        uint8_t protocol_version = 1
-    );
+        WorkerConnectionRegistry& registry, uint8_t protocol_version = 1);
 
     ~NetworkWorkerDispatcher() override = default;
 
-    bool dispatch(
-        const WorkerId& worker_id,
-        const Task& task
-    ) override;
+    bool dispatch(const WorkerId& worker_id, const Task& task) override;
 
     NetworkWorkerDispatcher(const NetworkWorkerDispatcher&) = delete;
     NetworkWorkerDispatcher& operator=(const NetworkWorkerDispatcher&) = delete;

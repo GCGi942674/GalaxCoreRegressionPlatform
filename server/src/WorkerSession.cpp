@@ -12,16 +12,35 @@ using namespace GCRP::Protocol::DTO;
 
 namespace GCRP {
 
-WorkerSession::WorkerSession(EventLoop* loop, WorkerManager& worker_manager,
-    WorkerConnectionRegistry& registry, ProtocolRouter& router, SchedulingDriver& scheduling_driver)
-    : loop_(loop), worker_manager_(worker_manager), registry_(registry), router_(router), scheduling_driver_(scheduling_driver) {}
+WorkerSession::WorkerSession(EventLoop* loop,
+    WorkerManager& worker_manager,
+    WorkerConnectionRegistry& registry,
+    ProtocolRouter& router,
+    SchedulingDriver& scheduling_driver)
+    : loop_(loop)
+    , worker_manager_(worker_manager)
+    , registry_(registry)
+    , router_(router)
+    , scheduling_driver_(scheduling_driver) {
+}
 
 WorkerSession::~WorkerSession() = default;
 
-std::optional<WorkerId> WorkerSession::getWorkerId() const { return worker_id_; }
-std::shared_ptr<Connection> WorkerSession::getConnection() const { return connection_weak_.lock(); }
-void WorkerSession::setConnection(std::shared_ptr<Connection> conn) { connection_weak_ = conn; }
-bool WorkerSession::isRegistered() const { return worker_id_.has_value(); }
+std::optional<WorkerId> WorkerSession::getWorkerId() const {
+    return worker_id_;
+}
+
+std::shared_ptr<Connection> WorkerSession::getConnection() const {
+    return connection_weak_.lock();
+}
+
+void WorkerSession::setConnection(std::shared_ptr<Connection> conn) {
+    connection_weak_ = conn;
+}
+
+bool WorkerSession::isRegistered() const {
+    return worker_id_.has_value();
+}
 
 void WorkerSession::onMessage(const std::string& json_msg) {
     ProtocolMessage request;
@@ -39,8 +58,8 @@ void WorkerSession::onMessage(const std::string& json_msg) {
 
 void WorkerSession::handleRequest(const ProtocolMessage& request) {
     // The host serializes session messages, registration and close operations.
-    if (isRegistered() && (!binding_handle_ ||
-        !registry_.isCurrent(*worker_id_, *binding_handle_))) {
+    if (isRegistered() &&
+        (!binding_handle_ || !registry_.isCurrent(*worker_id_, *binding_handle_))) {
         reply(request.request_id, ResponseCode::INVALID_STATE, "worker connection replaced");
         return;
     }
@@ -54,19 +73,40 @@ void WorkerSession::handleRequest(const ProtocolMessage& request) {
         }
         // Validate identity before changing WorkerManager or the registry.
         if (worker_id_ && *worker_id_ != dto.worker_id) {
-            reply(request.request_id, ResponseCode::INVALID_REQUEST, "worker identity change not allowed");
+            reply(request.request_id,
+                ResponseCode::INVALID_REQUEST,
+                "worker identity change not allowed");
             return;
         }
         auto conn = getConnection();
-        if (!conn || !conn->isConnected()) return;
+        if (!conn || !conn->isConnected())
+            return;
         const bool recovering = request.data.contains("recovery_version");
+        int machine_slots = 0;
+        if (request.data.contains("resource_version")) {
+            if (request.data["resource_version"] != 1 || !request.data.contains("machine_slots") ||
+                !request.data["machine_slots"].is_number_integer() ||
+                request.data["machine_slots"] < 1 || request.data["machine_slots"] > 128) {
+                reply(request.request_id,
+                    ResponseCode::INVALID_REQUEST,
+                    "invalid resource registration");
+                return;
+            }
+            machine_slots = request.data["machine_slots"].get<int>();
+        }
         if (recovering && (request.data["recovery_version"] != 1 || dto.slots != 1)) {
-            reply(request.request_id, ResponseCode::INVALID_REQUEST, "recovery v1 requires one slot");
+            reply(
+                request.request_id, ResponseCode::INVALID_REQUEST, "recovery v1 requires one slot");
             return;
         }
-        if (recovering) router_.holdWorker(dto.worker_id);
-        if (!worker_manager_.registerWorker(dto.worker_id, dto.hostname, dto.slots,
-                                            dto.machine_id, dto.slot_id)) {
+        if (recovering)
+            router_.holdWorker(dto.worker_id);
+        if (!worker_manager_.registerWorker(dto.worker_id,
+                dto.hostname,
+                dto.slots,
+                dto.machine_id,
+                dto.slot_id,
+                machine_slots)) {
             reply(request.request_id, ResponseCode::INVALID_REQUEST, "invalid worker registration");
             return;
         }
@@ -76,19 +116,27 @@ void WorkerSession::handleRequest(const ProtocolMessage& request) {
             return;
         }
         worker_id_ = dto.worker_id;
-        worker_manager_.setControlSupported(dto.worker_id,dto.control_v1);
+        conn->setLogIdentity("WORKER", dto.worker_id);
+        worker_manager_.setControlSupported(dto.worker_id, dto.control_v1);
+        worker_manager_.setTimeoutSupported(dto.worker_id, dto.timeout_v1);
         recovery_protocol_ = recovering;
         binding_handle_ = *handle;
-        LOG_INFO(LogModule::WORKER, "worker registered: " + *worker_id_);
-        ProtocolMessage response;response.request_id=request.request_id;response.type=MessageType::RESPONSE;
-        response.data=DTO::toJson(DTO::Response{0,"ok",{{"archive_lifecycle_v1",true}}});
+        LOG_DEBUG(LogModule::WORKER, "worker connection bound, " + conn->logContext());
+        ProtocolMessage response;
+        response.request_id = request.request_id;
+        response.type = MessageType::RESPONSE;
+        response.data = DTO::toJson(
+            DTO::Response{0, "ok", {{"archive_lifecycle_v1", true}, {"timeout_v1", true}}});
         sendToConnection(encodeResponse(response));
-        if (!recovering) scheduling_driver_.requestSchedule();
+        if (!recovering)
+            scheduling_driver_.requestSchedule();
         return;
     }
 
     if (!isAllowed(ConnectionRole::WORKER, request.type)) {
-        reply(request.request_id, ResponseCode::INVALID_REQUEST, "message not allowed on worker connection");
+        reply(request.request_id,
+            ResponseCode::INVALID_REQUEST,
+            "message not allowed on worker connection");
         return;
     }
     if (!isRegistered()) {
@@ -107,12 +155,14 @@ void WorkerSession::handleRequest(const ProtocolMessage& request) {
 }
 
 void WorkerSession::handleClose() {
-    if (!worker_id_) return;
+    if (!worker_id_)
+        return;
     if (binding_handle_) {
         const auto id = *worker_id_;
         // Old A closing after replacement B must affect neither B nor its liveness.
         registry_.unbind(id, *binding_handle_, [this, &id]() {
             worker_manager_.markOffline(id);
+            LOG_INFO(LogModule::WORKER, "worker disconnected; marked offline, worker_id=" + id);
         });
     }
     binding_handle_.reset();
@@ -144,15 +194,14 @@ std::vector<char> WorkerSession::encodeResponse(const ProtocolMessage& response)
 
 void WorkerSession::sendToConnection(const std::vector<char>& packet) {
     auto conn = getConnection();
-    if (conn && !packet.empty() && !conn->sendPacket(packet)) {
-        LOG_WARN(LogModule::NETWORK, "response queue rejected");
+    if (conn && !packet.empty() && !conn->sendResponsePacket(packet)) {
+        LOG_WARN(LogModule::NETWORK, "worker response queue rejected, " + conn->logContext());
     }
 }
 
 bool WorkerSession::validateWorkerIdentity(const ProtocolMessage& msg) {
-    return worker_id_ && msg.data.contains("worker_id") &&
-        msg.data["worker_id"].is_string() &&
-        msg.data["worker_id"].get<std::string>() == *worker_id_;
+    return worker_id_ && msg.data.contains("worker_id") && msg.data["worker_id"].is_string() &&
+           msg.data["worker_id"].get<std::string>() == *worker_id_;
 }
 
 } // namespace GCRP

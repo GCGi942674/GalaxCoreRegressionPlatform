@@ -15,7 +15,11 @@ namespace GCRP {
 class Logger {
 public:
     static Logger& instance();
-    void log(LogLevel level, LogModule module, const char* file, int line, const std::string& message) noexcept;
+    void log(LogLevel level,
+        LogModule module,
+        const char* file,
+        int line,
+        const std::string& message) noexcept;
     void shutdown();
     void setLogDirectory(const std::string& dir);
     void setLevel(LogLevel level);
@@ -31,7 +35,8 @@ public:
 
         const char* slash1 = std::strrchr(path, '/');
         const char* slash2 = std::strrchr(path, '\\');
-        const char* pos = !slash1 ? slash2 : (!slash2 ? slash1 : (slash1 > slash2 ? slash1 : slash2));
+        const char* pos =
+            !slash1 ? slash2 : (!slash2 ? slash1 : (slash1 > slash2 ? slash1 : slash2));
         return pos ? pos + 1 : path;
     }
 
@@ -39,7 +44,8 @@ private:
     Logger();
     ~Logger();
 
-        std::string formatMessage(LogLevel level, LogModule module, const char* file, int line, const std::string& message);
+    std::string formatMessage(
+        LogLevel level, LogModule module, const char* file, int line, const std::string& message);
     std::string getDateDir();
     std::string getLogFile(LogModule module, LogLevel level);
     void writeToFile(const std::string& filename, const std::string& message);

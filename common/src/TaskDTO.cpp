@@ -11,9 +11,7 @@ namespace GCRP::Protocol::DTO {
 
 static TaskType taskTypeFromString(const std::string& str) {
     static const std::unordered_map<std::string, TaskType> map = {
-        {"REGRESSION", TaskType::REGRESSION},
-        {"UNKNOWN", TaskType::UNKNOWN}
-    };
+        {"REGRESSION", TaskType::REGRESSION}, {"UNKNOWN", TaskType::UNKNOWN}};
     auto it = map.find(str);
     return (it != map.end()) ? it->second : TaskType::UNKNOWN;
 }
@@ -30,8 +28,7 @@ static TaskStatus taskStatusFromString(const std::string& str) {
         {"SUCCEEDED", TaskStatus::SUCCEEDED},
         {"FAILED", TaskStatus::FAILED},
         {"TIMEOUT", TaskStatus::TIMEOUT},
-        {"CANCELLED", TaskStatus::CANCELLED}
-    };
+        {"CANCELLED", TaskStatus::CANCELLED}};
     auto it = map.find(str);
     return (it != map.end()) ? it->second : TaskStatus::PENDING;
 }
@@ -42,10 +39,13 @@ static std::string taskStatusToString(TaskStatus status) {
 
 // SubmitTaskRequest
 bool fromJson(const nlohmann::json& j, SubmitTaskRequest& out) {
-    if (!j.is_object()) return false;
+    if (!j.is_object())
+        return false;
     for (auto it = j.begin(); it != j.end(); ++it)
         if (it.key() != "task_type" && it.key() != "target" && it.key() != "revision" &&
-            it.key() != "priority" && it.key() != "payload" && it.key() != "submission_key") return false;
+            it.key() != "priority" && it.key() != "payload" && it.key() != "submission_key" &&
+            it.key() != "timeout_mode")
+            return false;
     if (!j.contains("task_type") || !j["task_type"].is_string()) {
         return false;
     }
@@ -73,12 +73,19 @@ bool fromJson(const nlohmann::json& j, SubmitTaskRequest& out) {
         out.priority = j["priority"].get<int>();
     }
 
-    if (j.contains("payload")) out.payload = j["payload"];
+    if (j.contains("payload"))
+        out.payload = j["payload"];
     if (j.contains("submission_key")) {
-        if (!j["submission_key"].is_string() ||
-            j["submission_key"].get<std::string>().empty() ||
-            j["submission_key"].get<std::string>().size() > 128) return false;
+        if (!j["submission_key"].is_string() || j["submission_key"].get<std::string>().empty() ||
+            j["submission_key"].get<std::string>().size() > 128)
+            return false;
         out.submission_key = j["submission_key"].get<std::string>();
+    }
+    if (j.contains("timeout_mode")) {
+        if (!j["timeout_mode"].is_string() ||
+            (j["timeout_mode"] != "fixed" && j["timeout_mode"] != "auto"))
+            return false;
+        out.timeout_mode = j["timeout_mode"].get<std::string>();
     }
     return out.task_type != TaskType::UNKNOWN && validRegressionPayload(out.payload);
 }
@@ -90,13 +97,17 @@ nlohmann::json toJson(const SubmitTaskRequest& value) {
     j["revision"] = value.revision;
     j["priority"] = value.priority;
     j["payload"] = value.payload;
-    if (!value.submission_key.empty()) j["submission_key"] = value.submission_key;
+    if (value.timeout_mode != "fixed")
+        j["timeout_mode"] = value.timeout_mode;
+    if (!value.submission_key.empty())
+        j["submission_key"] = value.submission_key;
     return j;
 }
 
 // QueryTaskRequest
 bool fromJson(const nlohmann::json& j, QueryTaskRequest& out) {
-    if (!j.is_object() || j.size() != 1) return false;
+    if (!j.is_object() || j.size() != 1)
+        return false;
     if (!j.contains("task_id") || !j["task_id"].is_number_unsigned()) {
         return false;
     }
@@ -112,7 +123,8 @@ nlohmann::json toJson(const QueryTaskRequest& value) {
 
 // CancelTaskRequest
 bool fromJson(const nlohmann::json& j, CancelTaskRequest& out) {
-    if (!j.is_object() || j.size() != 1) return false;
+    if (!j.is_object() || j.size() != 1)
+        return false;
     if (!j.contains("task_id") || !j["task_id"].is_number_unsigned()) {
         return false;
     }
@@ -139,7 +151,8 @@ bool fromJson(const nlohmann::json& j, TaskStartRequest& out) {
     out.worker_id = j["worker_id"].get<std::string>();
 
     if (j.contains("run_id")) {
-        if (!j["run_id"].is_string()) return false;
+        if (!j["run_id"].is_string())
+            return false;
         out.run_id = j["run_id"].get<std::string>();
     }
 
@@ -150,7 +163,8 @@ nlohmann::json toJson(const TaskStartRequest& value) {
     nlohmann::json j;
     j["task_id"] = value.task_id;
     j["worker_id"] = value.worker_id;
-    if (!value.run_id.empty()) j["run_id"] = value.run_id;
+    if (!value.run_id.empty())
+        j["run_id"] = value.run_id;
     return j;
 }
 
@@ -171,7 +185,8 @@ bool fromJson(const nlohmann::json& j, TaskResultRequest& out, ProtocolError& er
     out.worker_id = j["worker_id"].get<std::string>();
 
     if (j.contains("run_id")) {
-        if (!j["run_id"].is_string()) return false;
+        if (!j["run_id"].is_string())
+            return false;
         out.run_id = j["run_id"].get<std::string>();
     }
 
@@ -185,11 +200,11 @@ bool fromJson(const nlohmann::json& j, TaskResultRequest& out, ProtocolError& er
     TaskStatus status = taskStatusFromString(status_str);
 
     // For TaskResult, only allow SUCCEEDED, FAILED, TIMEOUT
-    if (status != TaskStatus::SUCCEEDED &&
-        status != TaskStatus::FAILED &&
+    if (status != TaskStatus::SUCCEEDED && status != TaskStatus::FAILED &&
         status != TaskStatus::TIMEOUT) {
         error.code = ProtocolErrorCode::INVALID_FIELD_VALUE;
-        error.message = "Invalid status for TASK_RESULT: " + status_str + " (must be SUCCEEDED, FAILED, or TIMEOUT)";
+        error.message = "Invalid status for TASK_RESULT: " + status_str +
+                        " (must be SUCCEEDED, FAILED, or TIMEOUT)";
         return false;
     }
     out.status = status;
@@ -206,7 +221,8 @@ nlohmann::json toJson(const TaskResultRequest& value) {
     nlohmann::json j;
     j["task_id"] = value.task_id;
     j["worker_id"] = value.worker_id;
-    if (!value.run_id.empty()) j["run_id"] = value.run_id;
+    if (!value.run_id.empty())
+        j["run_id"] = value.run_id;
     j["status"] = taskStatusToString(value.status);
     j["message"] = value.message;
     return j;
@@ -219,7 +235,8 @@ bool fromJson(const nlohmann::json& j, TaskAssignRequest& out) {
     }
     out.task_id = j["task_id"].get<TaskId>();
     if (j.contains("run_id")) {
-        if (!j["run_id"].is_string()) return false;
+        if (!j["run_id"].is_string())
+            return false;
         out.run_id = j["run_id"].get<std::string>();
     }
     if (out.task_id == 0) {
@@ -256,19 +273,23 @@ bool fromJson(const nlohmann::json& j, TaskAssignRequest& out) {
         out.priority = j["priority"].get<int>();
     }
 
-    if (j.contains("payload")) out.payload = j["payload"];
+    if (j.contains("payload"))
+        out.payload = j["payload"];
     return validRegressionPayload(out.payload);
 }
 
 nlohmann::json toJson(const TaskAssignRequest& value) {
     nlohmann::json j;
     j["task_id"] = value.task_id;
-    if (!value.run_id.empty()) j["run_id"] = value.run_id;
+    if (!value.run_id.empty())
+        j["run_id"] = value.run_id;
     j["task_type"] = taskTypeToString(value.task_type);
     j["target"] = value.target;
     j["revision"] = value.revision;
     j["priority"] = value.priority;
     j["payload"] = value.payload;
+    if (!value.timeout_decision.is_null())
+        j["timeout_decision"] = value.timeout_decision;
     return j;
 }
 

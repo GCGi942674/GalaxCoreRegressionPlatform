@@ -1,5 +1,6 @@
 """Run commands under a dedicated Linux descendant supervisor."""
 import os
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -16,6 +17,7 @@ class ProcessExecutor:
         self.lease = None
         self.completion = None
         self.safe = True
+        self.last_completion = {}
         self.heartbeat = heartbeat or (lambda: None)
         self.before_launch = None
         self.events_stderr = False
@@ -32,6 +34,17 @@ class ProcessExecutor:
         if self.completion is not None:
             try:
                 self.safe = os.read(self.completion, 1) == b"C"
+                if self.safe:
+                    details = os.read(self.completion, 4096)
+                    if details:
+                        try:
+                            report = json.loads(details.decode("ascii"))
+                            if isinstance(report, dict):
+                                self.last_completion = report
+                        except (ValueError, UnicodeError):
+                            # An unknown diagnostics tail never substitutes for
+                            # the leading clean-tree proof or a case verdict.
+                            self.last_completion = {}
             finally:
                 os.close(self.completion)
                 self.completion = None
@@ -40,19 +53,39 @@ class ProcessExecutor:
 
     def run(self, argv, cwd, env, stdout, stderr, timeout, grace=2, on_start=None):
         if not self.safe:
-            raise ExecutionContainmentError("execution supervisor lost; restart requires inspection")
+            raise ExecutionContainmentError(
+                "execution supervisor lost; restart requires inspection"
+            )
+        self.last_completion = {}
         receipt = self.before_launch() if self.before_launch else None
         read_fd, self.lease = os.pipe()
         self.completion, completion_write = os.pipe()
         try:
             self.process = subprocess.Popen(
-                [sys.executable, '-B', str(Path(__file__).with_name('execution_guard.py')),
-                 '--lease', str(read_fd), '--timeout', str(timeout), '--grace', str(grace),
-                 '--completion', str(completion_write),
-                 *(['--receipt', str(receipt)] if receipt else []),
-                 *(['--events-stderr'] if self.events_stderr else []),
-                 '--', *map(str, argv)], cwd=str(cwd), env=env, stdout=stdout,
-                stderr=stderr, start_new_session=True, pass_fds=(read_fd, completion_write))
+                [
+                    sys.executable,
+                    "-B",
+                    str(Path(__file__).with_name("execution_guard.py")),
+                    "--lease",
+                    str(read_fd),
+                    "--timeout",
+                    str(timeout),
+                    "--grace",
+                    str(grace),
+                    "--completion",
+                    str(completion_write),
+                    *(["--receipt", str(receipt)] if receipt else []),
+                    *(["--events-stderr"] if self.events_stderr else []),
+                    "--",
+                    *map(str, argv),
+                ],
+                cwd=str(cwd),
+                env=env,
+                stdout=stdout,
+                stderr=stderr,
+                start_new_session=True,
+                pass_fds=(read_fd, completion_write),
+            )
         except BaseException:
             os.close(self.completion)
             self.completion = None

@@ -22,6 +22,6 @@
     "dcp_cmp": 0,
     "rpx_cmp": 0,
     "shape_cmp": 0,
-    "checksum_cmp": 0
+    "checksum_cmp": 1
   }
 }

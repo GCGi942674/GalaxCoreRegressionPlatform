@@ -13,12 +13,9 @@
 namespace GCRP {
 
 NetworkWorkerDispatcher::NetworkWorkerDispatcher(
-    WorkerConnectionRegistry& registry,
-    uint8_t protocol_version
-)
+    WorkerConnectionRegistry& registry, uint8_t protocol_version)
     : registry_(registry)
-    , protocol_version_(protocol_version)
-{
+    , protocol_version_(protocol_version) {
 }
 
 Protocol::ProtocolMessage NetworkWorkerDispatcher::buildTaskAssignMessage(const Task& task) {
@@ -35,25 +32,21 @@ Protocol::ProtocolMessage NetworkWorkerDispatcher::buildTaskAssignMessage(const 
     assign_dto.revision = task.getRevision();
     assign_dto.priority = task.getPriority();
     assign_dto.payload = task.getPayload();
+    assign_dto.timeout_decision = task.getTimeoutDecision();
 
     message.data = Protocol::DTO::toJson(assign_dto);
     return message;
 }
 
-bool NetworkWorkerDispatcher::dispatch(
-    const WorkerId& worker_id,
-    const Task& task
-) {
+bool NetworkWorkerDispatcher::dispatch(const WorkerId& worker_id, const Task& task) {
     if (!registry_.hasConnection(worker_id)) {
-        LOG_WARN(LogModule::NETWORK,
-                 "dispatch failed: no connection for worker=" + worker_id);
+        LOG_WARN(LogModule::NETWORK, "dispatch failed: no connection for worker=" + worker_id);
         return false;
     }
 
     auto connection = registry_.getConnection(worker_id);
     if (!connection || !connection->isConnected()) {
-        LOG_WARN(LogModule::NETWORK,
-                 "dispatch failed: expired connection for worker=" + worker_id);
+        LOG_WARN(LogModule::NETWORK, "dispatch failed: expired connection for worker=" + worker_id);
         return false;
     }
 
@@ -62,11 +55,12 @@ bool NetworkWorkerDispatcher::dispatch(
     std::string serialized;
     try {
         Protocol::ProtocolError error;
-        if (!Protocol::ProtocolCodec::encode(message, serialized, error)) return false;
+        if (!Protocol::ProtocolCodec::encode(message, serialized, error))
+            return false;
     } catch (const std::exception& e) {
         LOG_ERROR(LogModule::NETWORK,
-                 "dispatch failed: serialization error for task=" + std::to_string(task.getId()) +
-                 " error=" + e.what());
+            "dispatch failed: serialization error for task=" + std::to_string(task.getId()) +
+                " error=" + e.what());
         return false;
     }
 
@@ -76,8 +70,8 @@ bool NetworkWorkerDispatcher::dispatch(
         return connection->sendPacket(framed);
     } catch (const std::exception& e) {
         LOG_ERROR(LogModule::NETWORK,
-                 "dispatch failed: send error for task=" + std::to_string(task.getId()) +
-                 " worker=" + worker_id + " error=" + e.what());
+            "dispatch failed: send error for task=" + std::to_string(task.getId()) +
+                " worker=" + worker_id + " error=" + e.what());
         return false;
     }
 }

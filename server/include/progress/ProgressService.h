@@ -29,7 +29,10 @@ struct RollbackQuery {
 // revision. Only an explicit PASS followed by an explicit FAIL is a rollback.
 class ProgressService {
 public:
-    explicit ProgressService(const Scheduler& scheduler) : scheduler_(scheduler) {}
+    explicit ProgressService(const Scheduler& scheduler)
+        : scheduler_(scheduler) {
+    }
+
     nlohmann::json queryProgress(const ProgressQuery& query) const;
     nlohmann::json queryRollbacks(const RollbackQuery& query) const;
 

@@ -16,10 +16,7 @@ struct SchedulingResult {
 
 class SchedulingCoordinator {
 public:
-    SchedulingCoordinator(
-        Scheduler& scheduler,
-        WorkerDispatcher& dispatcher
-    );
+    SchedulingCoordinator(Scheduler& scheduler, WorkerDispatcher& dispatcher);
 
     SchedulingCoordinator(const SchedulingCoordinator&) = delete;
     SchedulingCoordinator& operator=(const SchedulingCoordinator&) = delete;

@@ -1,0 +1,18 @@
+add_executable(test_adaptive_timeout test_adaptive_timeout.cpp)
+target_link_libraries(test_adaptive_timeout PRIVATE gcrp_server_core)
+add_test(NAME test_adaptive_timeout COMMAND test_adaptive_timeout)
+set_tests_properties(test_adaptive_timeout PROPERTIES TIMEOUT 30)
+find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
+add_test(NAME test_worker_timing COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/test_worker_timing.py)
+set_tests_properties(test_worker_timing PROPERTIES TIMEOUT 45)
+
+add_test(NAME test_timeout_integration COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/test_timeout_integration.py $<TARGET_FILE:gcrp_server>)
+set_tests_properties(test_timeout_integration PROPERTIES TIMEOUT 90)
+
+if(TARGET gcrp_qt_transport)
+    find_package(Qt5 5.8 REQUIRED COMPONENTS Core Widgets Network)
+    add_executable(test_timeout_gui test_timeout_gui.cpp)
+    target_link_libraries(test_timeout_gui PRIVATE gcrp_qt_transport Qt5::Widgets)
+    add_test(NAME test_timeout_gui COMMAND test_timeout_gui)
+    set_tests_properties(test_timeout_gui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 20)
+endif()

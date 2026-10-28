@@ -6,6 +6,7 @@ from pathlib import Path
 from recovery_journal import sync_directory
 import re
 import shutil
+import stat
 import time
 
 _RUN = re.compile(r"run-[A-Za-z0-9_]+\Z")
@@ -44,6 +45,38 @@ def _newest_and_safe(path):
     return newest
 
 
+def remove_task_artifact(directory):
+    """Remove only the private input ZIP, never the shared source or a symlink."""
+    directory = Path(directory)
+    if any(path.is_symlink() for path in (directory,) + tuple(directory.parents)):
+        raise RuntimeError("unsafe artifact directory")
+    archive = directory / "artifact.zip"
+    try:
+        info = archive.lstat()
+    except FileNotFoundError:
+        return 0
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError("unsafe task artifact")
+    archive.unlink()
+    sync_directory(directory)
+    return info.st_size
+
+
+def _archived_artifact(directory):
+    receipt = directory / "archived.json"
+    if receipt.is_symlink() or not receipt.is_file():
+        return 0
+    value = json.loads(receipt.read_text(encoding="utf-8"))
+    if (
+        not isinstance(value, dict)
+        or value.get("server_verified") is not True
+        or not isinstance(value.get("verified_files"), dict)
+        or not value["verified_files"]
+    ):
+        return 0
+    return remove_task_artifact(directory)
+
+
 def prune_worker_logs(output, days=30, now=None):
     if type(days) is not int or not 1 <= days <= 3650:
         raise ValueError("invalid log retention days")
@@ -61,9 +94,20 @@ def prune_worker_logs(output, days=30, now=None):
             if run.is_symlink() or not run.is_dir() or not _RUN.fullmatch(run.name):
                 continue
             for task in run.iterdir():
-                if (task.is_symlink() or not task.is_dir() or not _TASK.fullmatch(task.name)
-                        or task.name in protected_ids or str(task.resolve()) in protected_directories):
+                if (
+                    task.is_symlink()
+                    or not task.is_dir()
+                    or not _TASK.fullmatch(task.name)
+                    or task.name in protected_ids
+                    or str(task.resolve()) in protected_directories
+                ):
                     continue
+                # Completed, Server-verified runs no longer need the input ZIP.
+                # Keep journals protected above; do not wait 30 days for this copy.
+                reclaimed = _archived_artifact(task)
+                if reclaimed:
+                    print("[WORKER] removed archived task artifact: {} ({} bytes)".format(
+                        task, reclaimed), flush=True)
                 newest = _newest_and_safe(task)
                 if newest is None or newest >= cutoff:
                     continue
@@ -77,20 +121,24 @@ def prune_worker_logs(output, days=30, now=None):
         # Completion receipts outside run directories used to accumulate forever.
         # Keep referenced receipts and a one-day safety margin for late guards.
         referenced = set()
-        for pattern in ('active-*.json', 'pending-report-*.json'):
+        for pattern in ("active-*.json", "pending-report-*.json"):
             for journal in output.glob(pattern):
                 if journal.is_symlink():
-                    raise RuntimeError('unsafe receipt journal')
-                value = json.loads(journal.read_text(encoding='utf-8'))
-                if isinstance(value.get('receipt'), str):
-                    referenced.add(str(Path(value['receipt']).resolve()))
+                    raise RuntimeError("unsafe receipt journal")
+                value = json.loads(journal.read_text(encoding="utf-8"))
+                if isinstance(value.get("receipt"), str):
+                    referenced.add(str(Path(value["receipt"]).resolve()))
         receipt_cutoff = (time.time() if now is None else now) - 86400
-        for receipt in output.glob('clean-*.json'):
-            if (receipt.is_symlink() or not receipt.is_file() or
-                    not re.fullmatch(r'clean-[0-9a-f]{32}\.json', receipt.name) or
-                    receipt.stat().st_mtime >= receipt_cutoff or str(receipt.resolve()) in referenced):
+        for receipt in output.glob("clean-*.json"):
+            if (
+                receipt.is_symlink()
+                or not receipt.is_file()
+                or not re.fullmatch(r"clean-[0-9a-f]{32}\.json", receipt.name)
+                or receipt.stat().st_mtime >= receipt_cutoff
+                or str(receipt.resolve()) in referenced
+            ):
                 continue
-            value = json.loads(receipt.read_text(encoding='utf-8'))
+            value = json.loads(receipt.read_text(encoding="utf-8"))
             if value == dict(clean=True, token=receipt.name):
                 receipt.unlink()
                 sync_directory(output)

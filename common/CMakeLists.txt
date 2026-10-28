@@ -36,12 +36,12 @@ target_link_libraries(common PUBLIC Threads::Threads)
 
 # Prefer the synchronized dependency, including over an old build/deps cache.
 if(EXISTS "${PROJECT_SOURCE_DIR}/third_party/nlohmann/json.hpp")
-  set(GCRP_JSON_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/third_party"
-      CACHE PATH "Directory containing nlohmann/json.hpp" FORCE)
+    set(GCRP_JSON_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/third_party"
+        CACHE PATH "Directory containing nlohmann/json.hpp" FORCE)
 else()
-  find_path(GCRP_JSON_INCLUDE_DIR nlohmann/json.hpp)
+    find_path(GCRP_JSON_INCLUDE_DIR nlohmann/json.hpp)
 endif()
 if(NOT EXISTS "${GCRP_JSON_INCLUDE_DIR}/nlohmann/json.hpp")
-  message(FATAL_ERROR "nlohmann/json.hpp is required. Sync third_party/nlohmann/json.hpp or set GCRP_JSON_INCLUDE_DIR.")
+    message(FATAL_ERROR "nlohmann/json.hpp is required. Sync third_party/nlohmann/json.hpp or set GCRP_JSON_INCLUDE_DIR.")
 endif()
 target_include_directories(common SYSTEM PUBLIC ${GCRP_JSON_INCLUDE_DIR})

@@ -10,12 +10,13 @@ namespace GCRP {
 class GuiCatalog {
 public:
     nlohmann::json query(const nlohmann::json& request);
+
 private:
     std::mutex mutex_;
     nlohmann::json snapshot_;
-    std::map<uint64_t,nlohmann::json> recent_;
+    std::map<uint64_t, nlohmann::json> recent_;
     uint64_t generation_{0};
     std::chrono::steady_clock::time_point created_{};
     nlohmann::json scan() const;
 };
-}
+} // namespace GCRP

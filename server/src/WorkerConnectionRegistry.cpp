@@ -7,16 +7,12 @@ namespace GCRP {
 WorkerConnectionRegistry::WorkerConnectionRegistry() {
 }
 
-bool WorkerConnectionRegistry::bind(
-    const WorkerId& worker_id,
-    const ConnectionPtr& connection
-) {
+bool WorkerConnectionRegistry::bind(const WorkerId& worker_id, const ConnectionPtr& connection) {
     return bindWithHandle(worker_id, connection).has_value();
 }
 
 std::optional<WorkerConnectionRegistry::HandleId> WorkerConnectionRegistry::bindWithHandle(
-    const WorkerId& worker_id, const ConnectionPtr& connection
-) {
+    const WorkerId& worker_id, const ConnectionPtr& connection) {
     if (worker_id.empty()) {
         LOG_ERROR(LogModule::WORKER, "Cannot bind: empty worker_id");
         return std::nullopt;
@@ -52,10 +48,7 @@ bool WorkerConnectionRegistry::isCurrent(const WorkerId& worker_id, HandleId han
 }
 
 bool WorkerConnectionRegistry::unbind(
-    const WorkerId& worker_id,
-    HandleId handle_id,
-    const std::function<void()>& on_unbound
-) {
+    const WorkerId& worker_id, HandleId handle_id, const std::function<void()>& on_unbound) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = registry_.find(worker_id);
@@ -65,23 +58,22 @@ bool WorkerConnectionRegistry::unbind(
 
     if (it->second.handle_id != handle_id) {
         LOG_WARN(LogModule::WORKER,
-                 "Stale unbind rejected for worker=" + worker_id +
-                 ", current_handle_id=" + std::to_string(it->second.handle_id) +
-                 ", requested=" + std::to_string(handle_id));
+            "Stale unbind rejected for worker=" + worker_id + ", current_handle_id=" +
+                std::to_string(it->second.handle_id) + ", requested=" + std::to_string(handle_id));
         return false;
     }
 
     // Only the current binding may update worker liveness. Callback must not
     // re-enter the registry; the host serializes registration and close.
-    if (on_unbound) on_unbound();
+    if (on_unbound)
+        on_unbound();
     registry_.erase(it);
     LOG_INFO(LogModule::WORKER, "Unbound connection for worker=" + worker_id);
     return true;
 }
 
 WorkerConnectionRegistry::ConnectionPtr WorkerConnectionRegistry::getConnection(
-    const WorkerId& worker_id
-) const {
+    const WorkerId& worker_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = registry_.find(worker_id);
@@ -92,9 +84,7 @@ WorkerConnectionRegistry::ConnectionPtr WorkerConnectionRegistry::getConnection(
     return it->second.handle.lock();
 }
 
-bool WorkerConnectionRegistry::hasConnection(
-    const WorkerId& worker_id
-) const {
+bool WorkerConnectionRegistry::hasConnection(const WorkerId& worker_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = registry_.find(worker_id);
@@ -106,8 +96,7 @@ bool WorkerConnectionRegistry::hasConnection(
 }
 
 WorkerConnectionRegistry::HandleId WorkerConnectionRegistry::getHandleId(
-    const WorkerId& worker_id
-) const {
+    const WorkerId& worker_id) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto it = registry_.find(worker_id);
